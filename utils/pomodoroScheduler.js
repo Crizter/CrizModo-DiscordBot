@@ -24,7 +24,8 @@ export async function startPomodoroLoop(userId, client) {
   const totalSessionsBeforeLongBreak = session.sessionsBeforeLongBreak;
   const maxSessions = session.maxSessions || totalSessionsBeforeLongBreak;
 
-  let completedSessions = 0;
+  let completedSessions = session.completedSessions || 0;
+
 
   console.log(`▶️ Pomodoro started for ${userId}`);
   console.log(`⏱️ Work: ${durations.study}m | Break: ${durations.break}m | Long Break: ${durations.longBreak}m | Sessions before long break: ${totalSessionsBeforeLongBreak} | Max sessions: ${maxSessions}`);
@@ -73,32 +74,35 @@ export async function startPomodoroLoop(userId, client) {
     // Mention the user in their server
     const userMention = `<@${userId}>`;
 
+    
 try {
-    const guilds = client.guilds.cache;
-    for (const [, guild] of guilds) {
-      const member = await guild.members.fetch(userId).catch(() => null);
-      if (!member) continue;
-  
-      const message = `🏁 ${userMention} Your Pomodoro session is **complete**! Great job today 🎉`;
-  
-      const voiceChannel = member.voice?.channel;
-      const textChannel =
-        guild.systemChannel || guild.channels.cache.find((ch) => ch.isTextBased() && ch.viewable);
-  
-      if (voiceChannel?.sendable) {
-        voiceChannel.send(message).catch(() => {});
-      } else if (textChannel) {
-        textChannel.send(message).catch(() => {});
-      }
-  
-      break;
+  const guilds = client.guilds.cache;
+  for (const [, guild] of guilds) {
+    const member = await guild.members.fetch(userId).catch(() => null);
+    if (!member) continue;
+
+    const message = `🏁 ${userMention} Your Pomodoro session is **complete**! Great job today 🎉;`
+
+    const voiceChannel = member.voice?.channel;
+    const textChannel =
+      guild.systemChannel || guild.channels.cache.find((ch) => ch.isTextBased() && ch.viewable);
+
+    if (voiceChannel?.sendable) {
+      voiceChannel.send(message).catch(() => {});
+    } else if (textChannel) {
+      textChannel.send(message).catch(() => {});
     }
-  } catch (err) {
-    console.error("❌ Failed to send session completion message:", err);
+
+    break;
   }
+} catch (err) {
+  console.error("❌ Failed to send session completion message:", err);
+}
   
-    console.log(`🏁 Pomodoro complete for ${userId}. Session ended.`);
-  };
+console.log(`🏁 Pomodoro complete for ${userId}. Session ended.`);
+};
+    
+
 
   loop();
 }

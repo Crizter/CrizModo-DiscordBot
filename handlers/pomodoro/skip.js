@@ -28,14 +28,21 @@ export async function handleSkip(interaction) {
       activeTimers.delete(userId);
     }
 
-    // Flip the phase
-    const newPhase = session.currentPhase === "study" ? "break" : "study";
-    session.currentPhase = newPhase;
+// Store the current phase before flipping
+const wasStudy = session.currentPhase === "study";
+const wasBreak = session.currentPhase === "break" || session.currentPhase === "longBreak";
 
+// Flip phase
+session.currentPhase = wasStudy ? "break" : "study";
+
+//  increment session if we just finished a study phase
+if (wasStudy) {
+  session.completedSessions += 1;
+}
     await session.save();
 
     const replyMsg =
-      newPhase === "study"
+      session.currentPhase === "study"
         ? "⏩ Skipped! Time to focus again. 🔥"
         : "⏩ Skipped! Take a short break now. ☕";
 
