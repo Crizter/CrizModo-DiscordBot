@@ -14,24 +14,24 @@ const sessionSchema = new mongoose.Schema(
     workDuration: {
       type: Number, // in minutes
       required: true,
-      min: [1, 'Work duration must be at least 5 minutes'],
-      max: [120, 'Work duration cannot exceed 120 minutes'],
+      min: [5, 'Work duration must be at least 5 minutes'],
+      max: [180, 'Work duration cannot exceed 120 minutes'],
     },
     breakDuration: {
       type: Number, // in minutes
       required: true,
       min: [1, 'Break must be at least 1 minute'],
-      max: [30, 'Break cannot exceed 30 minutes'],
+      max: [60, 'Break cannot exceed 30 minutes'],
     },
     longBreakDuration: {
       type: Number, // in minutes
-      required: false,
-      min: 1,
+      required: true,
+      min: 30,
       max: 120,
     },
     sessionsBeforeLongBreak: {
       type: Number,
-      required: false,
+      required: true,
       min: 1,
       max: 10,
     },
