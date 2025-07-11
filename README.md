@@ -6,6 +6,7 @@
 
 > 🚀 **Currently used in a server with over 50,000+ members**
 
+<img width="1024" height="1536" alt=" Image Jul 11, 2025, 07_54_55 AM" src="https://github.com/user-attachments/assets/5fd223cf-5cfd-47a8-8c4e-c3f97bd1f5ad" />
 
 ---
 
