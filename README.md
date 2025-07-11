@@ -5,7 +5,7 @@
 **Crizmodo** is a powerful, community-tested Pomodoro timer bot for Discord, designed to boost productivity with structured work and break sessions. Built with collaborative features and a clean, interactive interface, Crizmodo keeps your server focused and motivated.
 
 > 🚀 **Currently used in a server with over 50,000+ members**
-<img width="1024" height="1536" alt="image" src="https://github.com/user-attachments/assets/affffdf8-47dd-4f62-b493-8dc724267d18" />
+
 
 ---
 
