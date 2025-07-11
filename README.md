@@ -1,4 +1,3 @@
----
 
 ````markdown
 # 🕒 Crizmodo – The Ultimate Discord Timer Bot
@@ -91,5 +90,4 @@ MIT License
 
 ```
 
----
-```
+
