@@ -1,4 +1,3 @@
-import { PermissionFlagsBits } from "discord.js";
 import { getGuildConfig, manageChannelVisibility } from "../../utils/roomActiveCheckManager.js";
 
 export async function handleVoiceStateUpdate(oldState, newState) {
@@ -10,14 +9,18 @@ export async function handleVoiceStateUpdate(oldState, newState) {
         return; // Feature is disabled or not configured, do nothing
     }
 
-    // Check if the voice state change involves the primary voice channel
+    // Check if the voice state change involves either the primary OR secondary voice channel
     const primaryChannelId = config.primaryChannelId;
-    const affectsPrimaryChannel = 
+    const secondaryChannelId = config.secondaryChannelId;
+    
+    const affectsRelevantChannels = 
         oldState.channelId === primaryChannelId || 
-        newState.channelId === primaryChannelId;
+        newState.channelId === primaryChannelId ||
+        oldState.channelId === secondaryChannelId || 
+        newState.channelId === secondaryChannelId;
 
-    if (!affectsPrimaryChannel) {
-        return; // Change doesn't involve primary channel, do nothing
+    if (!affectsRelevantChannels) {
+        return; // Change doesn't involve relevant channels, do nothing
     }
 
     try {
@@ -30,9 +33,9 @@ export async function handleVoiceStateUpdate(oldState, newState) {
 
         // Count members in primary channel
         const memberCount = primaryChannel.members.size;
-        console.log(`📊 Primary channel "${primaryChannel.name}" member count: ${memberCount}`);
+        console.log(`📊 Voice state update detected - Primary channel "${primaryChannel.name}" member count: ${memberCount}`);
 
-        // Manage channel visibility based on member count
+        // Manage channel visibility based on member count and secondary channel status
         await manageChannelVisibility(newState.guild, memberCount, config);
 
     } catch (error) {

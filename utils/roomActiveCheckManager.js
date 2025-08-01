@@ -129,9 +129,14 @@ export async function manageChannelVisibility(guild, memberCount, config) {
       return;
     }
 
-    // Apply logic based on member count and threshold
+    // Count members in secondary channel
+    const secondaryMemberCount = secondaryChannel.members.size;
+    
+    console.log(`📊 Channel status - Primary: ${memberCount} members, Secondary: ${secondaryMemberCount} members, Threshold: ${config.threshold}`);
+
+    // Decision logic with edge case handling
     if (memberCount >= config.threshold) {
-      // Make secondary channel visible to required role, hidden from everyone
+      // Primary channel meets threshold - make secondary visible to required role
       await secondaryChannel.permissionOverwrites.set([
         {
           id: guild.roles.everyone.id, // @everyone role
@@ -142,9 +147,24 @@ export async function manageChannelVisibility(guild, memberCount, config) {
           allow: [PermissionFlagsBits.ViewChannel]
         }
       ]);
-      console.log(`✅ Secondary channel "${secondaryChannel.name}" made visible to role "${requiredRole.name}" (${memberCount} > ${config.threshold})`);
+      console.log(`✅ Secondary channel "${secondaryChannel.name}" made visible to role "${requiredRole.name}" (Primary: ${memberCount} >= ${config.threshold})`);
+      
+    } else if (secondaryMemberCount > 0) {
+      // Primary channel below threshold BUT secondary channel has members - keep it visible
+      await secondaryChannel.permissionOverwrites.set([
+        {
+          id: guild.roles.everyone.id, // @everyone role
+          deny: [PermissionFlagsBits.ViewChannel]
+        },
+        {
+          id: config.requiredRoleId, // Required role
+          allow: [PermissionFlagsBits.ViewChannel]
+        }
+      ]);
+      console.log(`🔒 Secondary channel "${secondaryChannel.name}" kept visible to role "${requiredRole.name}" (Primary: ${memberCount} < ${config.threshold}, but Secondary has ${secondaryMemberCount} members)`);
+      
     } else {
-      // Make secondary channel hidden from everyone including required role
+      // Primary channel below threshold AND secondary channel is empty - hide it
       await secondaryChannel.permissionOverwrites.set([
         {
           id: guild.roles.everyone.id, // @everyone role
@@ -155,7 +175,7 @@ export async function manageChannelVisibility(guild, memberCount, config) {
           deny: [PermissionFlagsBits.ViewChannel]
         }
       ]);
-      console.log(`✅ Secondary channel "${secondaryChannel.name}" hidden from everyone (${memberCount} <= ${config.threshold})`);
+      console.log(`❌ Secondary channel "${secondaryChannel.name}" hidden from everyone (Primary: ${memberCount} < ${config.threshold} and Secondary is empty)`);
     }
 
   } catch (error) {
