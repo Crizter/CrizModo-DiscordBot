@@ -1,6 +1,6 @@
 // pomodoroScheduler.js
 import { Session } from "../models/sessions.models.js";
-import { getSessionEmbed } from "./getsessionEmbed.js";
+import { getSessionEmbed } from "./getSessionEmbed.js";
 import {
     EmbedBuilder,
     ButtonBuilder,
