@@ -15,6 +15,10 @@ import {
   data as roomActiveCheckData,
   execute as roomActiveCheckExecute,
 } from "./commands/roomactivecheck.js";
+import {
+  data as listMembersData,
+  execute as listMembersExecute,
+} from "./commands/listMembers.js";
 import { connectToCluster } from "./database/db.js";
 import { handleRest } from "./handlers/pomodoro/rest.js";
 import { handleStart } from "./handlers/pomodoro/start.js";
@@ -47,6 +51,7 @@ const commands = [
   },
   pomodoroData.toJSON(),
   roomActiveCheckData.toJSON(),
+  listMembersData.toJSON(), // Add this line
 ];
 
 // Add commands to collection
@@ -57,6 +62,7 @@ client.commands.set("ping", {
 });
 client.commands.set("pomodoro", { execute: pomodoroExecute });
 client.commands.set("enable-roomactivecheck", { execute: roomActiveCheckExecute });
+client.commands.set("listmembers", { execute: listMembersExecute }); // Add this line
 
 // Initialize REST API
 const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
@@ -117,9 +123,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
-// Handle button interactions for Pomodoro
+// Handle button interactions for Pomodoro AND ListMembers
 client.on("interactionCreate", async (interaction) => {
   if (interaction.isButton()) {
+    // Pomodoro buttons
     switch (interaction.customId) {
       case "start_session":
         return handleStart(interaction, client);
@@ -128,6 +135,9 @@ client.on("interactionCreate", async (interaction) => {
       case "skip_phase":
         return handleSkip(interaction);
     }
+    
+    // ListMembers buttons are handled within the createMemberListEmbed function
+    // No need to add them here since they're handled by the collector in the handler
   }
 });
 
@@ -183,4 +193,4 @@ async function main() {
   });
 }
 
-main();
+  main();
