@@ -43,7 +43,7 @@ export const data = new SlashCommandBuilder()
                     .setName("work")
                     .setDescription("Set work duration in minutes (5-180)")
                     .setRequired(true)
-                    .setMinValue(1)
+                    .setMinValue(5)
                     .setMaxValue(180)
             )
     
