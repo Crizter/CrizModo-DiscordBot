@@ -1,12 +1,14 @@
 import mongoose from "mongoose";
 
-
-
 const sessionSchema = new mongoose.Schema(
   {
     userId: {
       type: String,
       required: true,
+    },
+    channelId: {
+      type: String,
+      required: false, // Channel where the pomodoro was started
     },
     startTime: {
       type: Date,
@@ -16,14 +18,14 @@ const sessionSchema = new mongoose.Schema(
     workDuration: {
       type: Number, // in minutes
       required: true,
-      min: [5, 'Work duration must be at least 5 minutes'],
-      max: [180, 'Work duration cannot exceed 120 minutes'],
+      min: [1, 'Work duration must be at least 1 minute'],
+      max: [180, 'Work duration cannot exceed 180 minutes'],
     },
     breakDuration: {
       type: Number, // in minutes
       required: true,
       min: [1, 'Break must be at least 1 minute'],
-      max: [60, 'Break cannot exceed 30 minutes'],
+      max: [60, 'Break cannot exceed 60 minutes'],
     },
     longBreakDuration: {
       type: Number, // in minutes
@@ -57,16 +59,20 @@ const sessionSchema = new mongoose.Schema(
       default: "study",
     },
     endTime: {
-      type: Number, // duration in minutes for the current session type
+      type: Number, // Current phase duration in minutes
+      required: true
     },
-    
+    actualEndTimestamp: {
+      type: Date,
+      required: false
+    }
   },
   {
-    timestamps: true, // adds createdAt and updatedAt
+    timestamps: true,
   }
 );
 
-// TTL index: automatically deletes documents after 2 hours (adjustable)
+// TTL index: automatically deletes documents after 10 hours
 sessionSchema.index({ createdAt: 1 }, { expireAfterSeconds: 36000 });
 
 export const Session = mongoose.model("Session", sessionSchema);

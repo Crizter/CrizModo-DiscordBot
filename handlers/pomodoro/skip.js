@@ -1,11 +1,5 @@
-// handlers/pomodoro/skip.js
 import { Session } from "../../models/sessions.models.js";
-import { activeTimers, startPomodoroLoop } from "../../utils/pomodoroScheduler.js";
-import {
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-} from "discord.js";
+import { activeTimers, handlePhaseCompletion } from "../../utils/pomodoroScheduler.js";
 
 export async function handleSkip(interaction) {
   const userId = interaction.user.id;
@@ -14,11 +8,10 @@ export async function handleSkip(interaction) {
     const session = await Session.findOne({ userId, isActive: true });
 
     if (!session) {
-      const replyOptions = {
-        content: "❌ No active session to skip.",
-        ephemeral: interaction.isButton?.() ? true : false,
-      };
-      return interaction.reply(replyOptions);
+      return await interaction.reply({
+        content: "❌ You don't have an active Pomodoro session to skip.",
+        flags: 64, // Use flags instead of ephemeral
+      });
     }
 
     // Clear the current timer
@@ -28,64 +21,23 @@ export async function handleSkip(interaction) {
       activeTimers.delete(userId);
     }
 
-// Store the current phase before flipping
-const wasStudy = session.currentPhase === "study";
-const wasBreak = session.currentPhase === "break" || session.currentPhase === "longBreak";
+    const currentPhase = session.phase;
+    
+    await interaction.reply({
+      content: `⏭️ Skipped ${currentPhase} phase! Moving to next phase...`,
+      flags: 64, // Use flags instead of ephemeral
+    });
 
-// Flip phase
-session.currentPhase = wasStudy ? "break" : "study";
+    console.log(`⏭️ User ${userId} skipped ${currentPhase} phase`);
 
-//  increment session if we just finished a study phase
-if (wasStudy) {
-  session.completedSessions += 1;
-}
-    await session.save();
+    // Handle the phase completion (which will transition to next phase)
+    await handlePhaseCompletion(userId, interaction.client);
 
-    const replyMsg =
-      session.currentPhase === "study"
-        ? "⏩ Skipped! Time to focus again. 🔥"
-        : "⏩ Skipped! Take a short break now. ☕";
-
-    if (interaction.isButton?.()) {
-      await interaction.reply(replyMsg);
-
-    //    update buttons (same layout)
-      if (interaction.message) {
-        const updatedRow = new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId("start_session")
-            .setLabel("▶️ Start Session")
-            .setStyle(ButtonStyle.Success)
-            .setDisabled(true),
-
-          new ButtonBuilder()
-            .setCustomId("stop_session")
-            .setLabel("⛔ Stop")
-            .setStyle(ButtonStyle.Danger)
-            .setDisabled(false),
-
-          new ButtonBuilder()
-            .setCustomId("skip_phase")
-            .setLabel("⏭️ Skip Phase")
-            .setStyle(ButtonStyle.Primary)
-            .setDisabled(false)
-        );
-
-        await interaction.message.edit({ components: [updatedRow] });
-      }
-    } else {
-      await interaction.reply(replyMsg);
-    }
-
-    // Restart loop with updated phase
-    startPomodoroLoop(userId, interaction.client);
   } catch (err) {
-    console.error("❌ Failed to skip phase:", err);
-    const errorMsg = "⚠️ Something went wrong while skipping.";
-    if (interaction.deferred || interaction.replied) {
-      await interaction.editReply(errorMsg);
-    } else {
-      await interaction.reply({ content: errorMsg, ephemeral: true });
-    }
+    console.error("❌ Error in handleSkip:", err);
+    await interaction.reply({
+      content: "❌ An error occurred while skipping the phase.",
+      flags: 64, // Use flags instead of ephemeral
+    });
   }
 }
