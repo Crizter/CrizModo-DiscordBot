@@ -70,7 +70,7 @@ const groupSessionSchema = new mongoose.Schema(
             min: 30,
             max:120,
         },
-        sesssionBeforeLongBreak: { 
+        sessionsBeforeLongBreak: { 
             type: Number,
             required: true, 
             min: 1, 
