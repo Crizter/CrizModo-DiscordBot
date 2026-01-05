@@ -247,12 +247,43 @@ async function handleSkipButton(interaction, groupSession, userId, client) {
         });
     }
 
+    // Get current phase before skipping
+    const currentPhase = groupSession.phase;
+    
+    // Phase name mapping for user-friendly messages
+    const phaseNames = {
+        study: "📚 Study Session",
+        break: "☕ Short Break", 
+        long_break: "🌴 Long Break"
+    };
+
+    const phaseName = phaseNames[currentPhase] || currentPhase;
+
     await interaction.reply({
-        content: `⏭️ Phase skipped by host! Moving to next phase...`,
+        content: `⏭️ **${phaseName}** skipped by host! Moving to next phase...`,
         flags: 64
     });
 
-    // Note: Skip functionality would need to be integrated with your existing timer system
-    // For now, just acknowledge the skip request
-    console.log(`⏭️ Skip requested for group session: ${groupSession.sessionId}`);
+    // Import and call the skip functionality
+    const { handleGroupPhaseCompletion } = await import("../../../utils/startGroupPomodoroLoop.js");
+    
+    // Notify all active participants about the skip
+    const activeParticipants = groupSession.participants.filter(p => p.isActive);
+    const participantMentions = activeParticipants.map(p => `<@${p.userId}>`).join(' ');
+    
+    // Send notification to the channel
+    try {
+        const channel = await client.channels.fetch(groupSession.channelId);
+        if (channel) {
+            const skipMessage = `${participantMentions}\n\n⏭️ **${phaseName}** has been skipped by the host!\n🔄 Moving to the next phase...`;
+            await channel.send(skipMessage);
+        }
+    } catch (error) {
+        console.error('❌ Error sending skip notification:', error);
+    }
+
+    // Execute the skip
+    await handleGroupPhaseCompletion(groupSession.sessionId, client);
+    
+    console.log(`⏭️ ${phaseName} skipped for group session: ${groupSession.sessionId}`);
 }
