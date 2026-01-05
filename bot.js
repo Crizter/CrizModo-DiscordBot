@@ -30,6 +30,8 @@ import {
   initializeGuildFeatureState,
   removeGuildFeatureState,
 } from "./utils/roomActiveCheckManager.js";
+// Add this import for group button handling
+import { handleGroupButtonInteraction } from "./handlers/pomodoro/group/buttonHandler.js";
 
 // Create a new bot client with voice state intent
 export const client = new Client({
@@ -51,7 +53,7 @@ const commands = [
   },
   pomodoroData.toJSON(),
   roomActiveCheckData.toJSON(),
-  listMembersData.toJSON(), // Add this line
+  listMembersData.toJSON(),
 ];
 
 // Add commands to collection
@@ -62,7 +64,7 @@ client.commands.set("ping", {
 });
 client.commands.set("pomodoro", { execute: pomodoroExecute });
 client.commands.set("enable-roomactivecheck", { execute: roomActiveCheckExecute });
-client.commands.set("listmembers", { execute: listMembersExecute }); // Add this line
+client.commands.set("listmembers", { execute: listMembersExecute });
 
 // Initialize REST API
 const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
@@ -118,15 +120,27 @@ client.on(Events.InteractionCreate, async (interaction) => {
     console.error(`❌ Error executing /${interaction.commandName}:`, error);
     await interaction.reply({
       content: "❌ An error occurred while executing this command.",
-      flags: 64, // 64 = ephemeral
+      flags: 64,
     });
   }
 });
 
-// Handle button interactions for Pomodoro AND ListMembers
+// Handle button interactions
 client.on("interactionCreate", async (interaction) => {
   if (interaction.isButton()) {
-    // Pomodoro buttons
+    // Handle group button interactions FIRST (they have specific patterns)
+    if (interaction.customId.startsWith('group_')) {
+      return await handleGroupButtonInteraction(interaction, client);
+    }
+    
+    // Handle your existing group buttons (if any)
+    if (interaction.customId.startsWith('skip_phase_') || interaction.customId.startsWith('stop_group_')) {
+      // Your existing group button logic here
+      console.log("Handling existing group button:", interaction.customId);
+      return;
+    }
+    
+    // Individual Pomodoro buttons
     switch (interaction.customId) {
       case "start_session":
         return handleStart(interaction, client);
@@ -135,9 +149,6 @@ client.on("interactionCreate", async (interaction) => {
       case "skip_phase":
         return handleSkip(interaction);
     }
-    
-    // ListMembers buttons are handled within the createMemberListEmbed function
-    // No need to add them here since they're handled by the collector in the handler
   }
 });
 
@@ -193,4 +204,4 @@ async function main() {
   });
 }
 
-  main();
+main();
