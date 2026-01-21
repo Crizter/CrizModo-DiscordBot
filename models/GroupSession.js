@@ -53,7 +53,7 @@ const groupSessionSchema = new mongoose.Schema(
         workDuration: { 
             type: Number, 
             required: true, 
-            min: 5, 
+            min: 1, 
             max: 180,
         },
         breakDuration: 
@@ -67,7 +67,7 @@ const groupSessionSchema = new mongoose.Schema(
         {
             type: Number, 
             required: true,
-            min: 30,
+            min: 1,
             max:120,
         },
         sessionsBeforeLongBreak: { 

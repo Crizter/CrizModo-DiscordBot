@@ -43,7 +43,7 @@ export async function getGroupSessionEmbed(groupSession, requestUserId = null) {
             
             footerText = `Session ${completed}/${total} • ${groupSession.sessionId}`;
         } else if (groupSession.status === 'completed') {
-            description = "**🏁 Session Completed!**\nGreat work everyone! 🎉";
+            description = "** Session Completed!**\nGreat work everyone! ";
         }
 
         // Participant list (show up to 8, then "and X more")
