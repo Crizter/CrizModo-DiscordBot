@@ -143,8 +143,130 @@ async function handlePhaseCompletion(sessionId, client) {
 
     await GroupSession.updateOne({ sessionId }, updateData);
 
+    // Send phase completion notification to users
+    await sendPhaseCompletionNotification(sessionId, phase, nextPhase, shouldIncrementSession ? completedSessions + 1 : completedSessions, client);
+
     // Continue to next phase
     runPhase(sessionId, client);
+}
+
+// Helper function to send phase completion notifications (for natural transitions)
+async function sendPhaseCompletionNotification(sessionId, completedPhase, nextPhase, currentCompletedSessions, client) {
+    const session = await GroupSession.findOne({ sessionId });
+    if (!session) return;
+
+    const activeParticipants = session.participants.filter(p => p.isActive);
+    const participantMentions = activeParticipants.map(p => `<@${p.userId}>`).join(' ');
+    
+    const phaseNames = {
+        study: "📚 Study Session",
+        break: "☕ Short Break", 
+        long_break: "🌴 Long Break"
+    };
+
+    let message;
+    
+    if (completedPhase === 'study') {
+        // Study session completed
+        const progressBar = buildProgressBar(currentCompletedSessions, session.maxSessions);
+        message = `${participantMentions}\n\n✅ **${phaseNames[completedPhase]}** completed!\n📊 Progress: \`${progressBar}\` (${currentCompletedSessions}/${session.maxSessions} sessions)`;
+    } else {
+        // Break completed
+        message = `${participantMentions}\n\n✅ **${phaseNames[completedPhase]}** completed!\n🔄 Time for the next phase!`;
+    }
+
+    try {
+        const channel = await client.channels.fetch(session.channelId);
+        if (channel) {
+            // Send the completion notification first
+            await channel.send(message);
+
+            // Now send the timer embed for the new phase
+            const updatedSession = await GroupSession.findOne({ sessionId });
+            if (updatedSession && updatedSession.isActive) {
+                const newPhase = updatedSession.phase;
+                let duration;
+                
+                // Determine duration for the new phase
+                if (newPhase === 'study') {
+                    duration = updatedSession.workDuration;
+                } else if (newPhase === 'break') {
+                    duration = updatedSession.breakDuration;
+                } else if (newPhase === 'long_break') {
+                    duration = updatedSession.longBreakDuration;
+                }
+
+                // Calculate end time for the new phase
+                const endTime = new Date(Date.now() + duration * 60 * 1000);
+                const endTimestamp = Math.floor(endTime.getTime() / 1000);
+                
+                // Create the timer embed for the new phase
+                const progressBar = buildProgressBar(updatedSession.completedSessions, updatedSession.maxSessions);
+                
+                const newPhaseNames = {
+                    study: "📚 Focus Time",
+                    break: "☕ Short Break",
+                    long_break: "🌴 Long Break"
+                };
+
+                const phaseColors = {
+                    study: 0x3498db,      // blue
+                    break: 0xf1c40f,      // yellow
+                    long_break: 0x2ecc71  // green
+                };
+
+                const embed = new EmbedBuilder()
+                    .setTitle(`👥 Group Pomodoro — ${newPhaseNames[newPhase]}`)
+                    .setDescription(
+                        `⏳ Duration: **${duration} mins**\n` +
+                        `🕒 **Ends <t:${endTimestamp}:R>** • <t:${endTimestamp}:T>\n\n` +
+                        `📈 **Progress:**\n\`${progressBar}\``
+                    )
+                    .setColor(phaseColors[newPhase])
+                    .setFooter({ 
+                        text: `Session ${updatedSession.completedSessions}/${updatedSession.maxSessions} • ${sessionId}` 
+                    })
+                    .setTimestamp();
+
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`group_skip_${sessionId}`)
+                        .setLabel("⏭️ Skip Phase")
+                        .setStyle(ButtonStyle.Primary),
+                    new ButtonBuilder()
+                        .setCustomId(`group_end_${sessionId}`)
+                        .setLabel("⛔ Stop Session")
+                        .setStyle(ButtonStyle.Danger)
+                );
+
+                // Send the new phase timer embed
+                const newPhaseMessages = {
+                    study: `🔥 **Focus time!** Time to concentrate and be productive!`,
+                    break: `☕ **Break time!** Take a short rest and recharge!`,
+                    long_break: `🌴 **Long break!** You've earned this extended rest!`
+                };
+
+                const timerMessage = `⏰ ${participantMentions} ${newPhaseMessages[newPhase]}`;
+                
+                const msg = await channel.send({ 
+                    content: timerMessage, 
+                    embeds: [embed], 
+                    components: [row] 
+                });
+
+                // Update the dashboard to track the new message
+                dashboards.set(sessionId, { message: msg, channel: channel });
+                
+                // Update the session's actualEndTimestamp in the database
+                await GroupSession.updateOne(
+                    { sessionId },
+                    { actualEndTimestamp: endTime }
+                );
+            }
+        }
+    } catch (error) {
+        console.error('❌ Error sending phase completion notification:', error);
+    }
 }
 
 async function sendPhaseNotification(sessionId, phase, duration, endTime, client) {
@@ -259,7 +381,7 @@ async function endGroupSession(sessionId, client) {
     if (dashboard?.message) {
         const endEmbed = new EmbedBuilder()
             .setTitle("🏁 Group Pomodoro Completed!")
-            .setDescription(`Congratulations everyone! 🎉\n\nYou've completed **${session.completedSessions}/${session.maxSessions}** study sessions together!\n\nAmazing teamwork and focus! 💪`)
+            .setDescription(`Congratulations everyone! \n\nYou've completed **${session.completedSessions}/${session.maxSessions}** study sessions together!\n\nAmazing teamwork and focus! `)
             .setColor("Green")
             .addFields(
                 {
@@ -367,12 +489,12 @@ async function sendSkipCompletionNotification(sessionId, skippedPhase, completed
     let message;
     
     if (isSessionComplete) {
-        message = `${participantMentions}\n\n🎉 **Final ${phaseNames[skippedPhase]}** completed!\n🏁 **Group session finished!** You completed all ${completedSessions}/${maxSessions} study sessions!`;
+        message = `${participantMentions}\n\n🎉 **Final ${phaseNames[skippedPhase]}** completed!\n🏁 **Group session finished!**  ${completedSessions}/${maxSessions}`;
     } else if (skippedPhase === 'study') {
         const progressBar = buildProgressBar(completedSessions, maxSessions);
-        message = `${participantMentions}\n\n✅ **${phaseNames[skippedPhase]}** completed!\n📊 Progress: \`${progressBar}\` (${completedSessions}/${maxSessions} sessions)`;
+        message = `${participantMentions}\n\n **${phaseNames[skippedPhase]}** completed!\n📊 Progress: \`${progressBar}\` (${completedSessions}/${maxSessions} sessions)`;
     } else {
-        message = `${participantMentions}\n\n⏭️ **${phaseNames[skippedPhase]}** skipped!\n🔄 Ready for the next study session!`;
+        message = `${participantMentions}\n\n⏭️ **${phaseNames[skippedPhase]}** skipped!\n Ready for the next study session!`;
     }
 
     try {
