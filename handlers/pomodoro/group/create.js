@@ -21,20 +21,6 @@ export async function handleGroupCreate(interaction, client) {
             });
         }
 
-        // Check if there's already an active group session in this channel
-        const existingGroupSession = await GroupSession.findOne({
-            guildId,
-            channelId,
-            status: { $in: ['waiting', 'active'] }
-        });
-
-        if (existingGroupSession) {
-            return await interaction.reply({
-                content: `❌ There's already an active group session in this channel. Session ID: \`${existingGroupSession.sessionId}\``,
-                flags: 64
-            });
-        }
-
         // Get settings from command or user defaults
         const userDefaults = await getDefaultSettings(userId);
         
@@ -88,6 +74,12 @@ export async function handleGroupCreate(interaction, client) {
             embeds: [embed],
             components
         });
+
+        const lobbyMessage = await interaction.fetchReply();
+        await GroupSession.updateOne(
+            { sessionId },
+            { lobbyMessageId: lobbyMessage.id }
+        );
 
         console.log(`🎯 Group session created: ${sessionId} by ${userId} in guild ${guildId}`);
 

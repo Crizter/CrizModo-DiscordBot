@@ -44,26 +44,18 @@ export async function handleGroupJoin(interaction, client) {
         const updatedSession = await GroupSession.findOne({ sessionId });
         const { embed, components } = await getGroupSessionEmbed(updatedSession);
 
-        // Update the original message in the channel
-        try {
-            const channel = await client.channels.fetch(groupSession.channelId);
-            if (channel) {
-                // Find recent messages from bot with this session ID
-                const messages = await channel.messages.fetch({ limit: 10 });
-                const sessionMessage = messages.find(msg => 
-                    msg.author.id === client.user.id && 
-                    msg.content.includes(sessionId)
-                );
-
-                if (sessionMessage) {
-                    await sessionMessage.edit({
-                        embeds: [embed],
-                        components
-                    });
-                }
+        // Update the original lobby message in the channel
+        if (updatedSession.lobbyMessageId) {
+            try {
+                const channel = await client.channels.fetch(groupSession.channelId);
+                const sessionMessage = await channel.messages.fetch(updatedSession.lobbyMessageId);
+                await sessionMessage.edit({
+                    embeds: [embed],
+                    components
+                });
+            } catch (updateError) {
+                console.log("Failed to update session message:", updateError.message);
             }
-        } catch (updateError) {
-            console.log("Failed to update session message:", updateError.message);
         }
 
         await interaction.reply({
