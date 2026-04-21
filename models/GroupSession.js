@@ -14,8 +14,12 @@ const groupSessionSchema = new mongoose.Schema(
             
         },
         channelId : {
-            type: String, 
+            type: String,
             required : true,
+        },
+        lobbyMessageId: {
+            type: String,
+            default: null,
         },
         hostUserId: { 
             type: String, 
@@ -94,8 +98,8 @@ const groupSessionSchema = new mongoose.Schema(
         }],
         maxParticipants: { 
             type: Number, 
-            default: 5,
-            max: 10
+            default: 10,
+            max: 15
         },
     },
     { 

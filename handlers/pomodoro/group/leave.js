@@ -46,27 +46,19 @@ export async function handleGroupLeave(interaction, client) {
             return;
         }
 
-        // Update the session message
-        try {
-            const channel = await client.channels.fetch(groupSession.channelId);
-            if (channel) {
+        // Update the lobby message
+        if (updatedSession.lobbyMessageId) {
+            try {
+                const channel = await client.channels.fetch(groupSession.channelId);
                 const { embed, components } = await getGroupSessionEmbed(updatedSession);
-                
-                const messages = await channel.messages.fetch({ limit: 10 });
-                const sessionMessage = messages.find(msg => 
-                    msg.author.id === client.user.id && 
-                    msg.content.includes(groupSession.sessionId)
-                );
-
-                if (sessionMessage) {
-                    await sessionMessage.edit({
-                        embeds: [embed],
-                        components
-                    });
-                }
+                const sessionMessage = await channel.messages.fetch(updatedSession.lobbyMessageId);
+                await sessionMessage.edit({
+                    embeds: [embed],
+                    components
+                });
+            } catch (updateError) {
+                console.log("Failed to update session message:", updateError.message);
             }
-        } catch (updateError) {
-            console.log("Failed to update session message:", updateError.message);
         }
 
         await interaction.reply({
