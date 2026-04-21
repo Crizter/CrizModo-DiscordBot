@@ -77,7 +77,7 @@ async function runPhase(sessionId, client) {
     await GroupSession.updateOne(
         { sessionId },
         { 
-            actualEndTimestamp: endTime
+            actualEndTimeStamp: endTime
         }
     );
 
@@ -178,91 +178,7 @@ async function sendPhaseCompletionNotification(sessionId, completedPhase, nextPh
     try {
         const channel = await client.channels.fetch(session.channelId);
         if (channel) {
-            // Send the completion notification first
             await channel.send(message);
-
-            // Now send the timer embed for the new phase
-            const updatedSession = await GroupSession.findOne({ sessionId });
-            if (updatedSession && updatedSession.isActive) {
-                const newPhase = updatedSession.phase;
-                let duration;
-                
-                // Determine duration for the new phase
-                if (newPhase === 'study') {
-                    duration = updatedSession.workDuration;
-                } else if (newPhase === 'break') {
-                    duration = updatedSession.breakDuration;
-                } else if (newPhase === 'long_break') {
-                    duration = updatedSession.longBreakDuration;
-                }
-
-                // Calculate end time for the new phase
-                const endTime = new Date(Date.now() + duration * 60 * 1000);
-                const endTimestamp = Math.floor(endTime.getTime() / 1000);
-                
-                // Create the timer embed for the new phase
-                const progressBar = buildProgressBar(updatedSession.completedSessions, updatedSession.maxSessions);
-                
-                const newPhaseNames = {
-                    study: "📚 Focus Time",
-                    break: "☕ Short Break",
-                    long_break: "🌴 Long Break"
-                };
-
-                const phaseColors = {
-                    study: 0x3498db,      // blue
-                    break: 0xf1c40f,      // yellow
-                    long_break: 0x2ecc71  // green
-                };
-
-                const embed = new EmbedBuilder()
-                    .setTitle(`👥 Group Pomodoro — ${newPhaseNames[newPhase]}`)
-                    .setDescription(
-                        `⏳ Duration: **${duration} mins**\n` +
-                        `🕒 **Ends <t:${endTimestamp}:R>** • <t:${endTimestamp}:T>\n\n` +
-                        `📈 **Progress:**\n\`${progressBar}\``
-                    )
-                    .setColor(phaseColors[newPhase])
-                    .setFooter({ 
-                        text: `Session ${updatedSession.completedSessions}/${updatedSession.maxSessions} • ${sessionId}` 
-                    })
-                    .setTimestamp();
-
-                const row = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder()
-                        .setCustomId(`group_skip_${sessionId}`)
-                        .setLabel("⏭️ Skip Phase")
-                        .setStyle(ButtonStyle.Primary),
-                    new ButtonBuilder()
-                        .setCustomId(`group_end_${sessionId}`)
-                        .setLabel("⛔ Stop Session")
-                        .setStyle(ButtonStyle.Danger)
-                );
-
-                // Send the new phase timer embed
-                const newPhaseMessages = {
-                    study: `🔥 **Focus time!** Time to concentrate and be productive!`,
-                    break: `☕ **Break time!** Take a short rest and recharge!`,
-                    long_break: `🌴 **Long break!** You've earned this extended rest!`
-                };
-
-                const timerMessage = `⏰ ${participantMentions} ${newPhaseMessages[newPhase]}`;
-                
-                const msg = await channel.send({ 
-                    content: timerMessage, 
-                    embeds: [embed], 
-                    components: [row] 
-                });
-
-                // Update the dashboard to track the new message
-                dashboards.set(sessionId, { message: msg, channel: channel });
-                
-                // Update the session's actualEndTimestamp in the database
-                await GroupSession.updateOne(
-                    { sessionId },
-                    { actualEndTimestamp: endTime }
-                );
-            }
         }
     } catch (error) {
         console.error('❌ Error sending phase completion notification:', error);
@@ -317,44 +233,35 @@ async function sendPhaseNotification(sessionId, phase, duration, endTime, client
             .setStyle(ButtonStyle.Danger)
     );
 
-    // Update existing dashboard or create new one
-    const dashboard = dashboards.get(sessionId);
-    if (dashboard?.message) {
-        await dashboard.message.edit({ embeds: [embed], components: [row] }).catch(() => {});
-    } else {
-        try {
-            // Find the channel where session was created
-            let targetChannel = null;
-            for (const [, guild] of client.guilds.cache) {
-                if (guild.id === session.guildId) {
-                    targetChannel = guild.channels.cache.get(session.channelId);
-                    break;
-                }
+    try {
+        let targetChannel = null;
+        for (const [, guild] of client.guilds.cache) {
+            if (guild.id === session.guildId) {
+                targetChannel = guild.channels.cache.get(session.channelId);
+                break;
             }
-
-            if (targetChannel) {
-                // Mention participants for phase transitions with simpler, cleaner message
-                const participantMentions = userIds.map(id => `<@${id}>`).join(' ');
-                
-                const phaseMessages = {
-                    study: `🔥 **Focus time!** Time to concentrate and be productive!`,
-                    break: `☕ **Break time!** Take a short rest and recharge!`,
-                    long_break: `🌴 **Long break!** You've earned this extended rest!`
-                };
-
-                // Send message similar to individual Pomodoro format
-                const message = `⏰ ${participantMentions} ${phaseMessages[phase]}`;
-
-                const msg = await targetChannel.send({ 
-                    content: message, 
-                    embeds: [embed], 
-                    components: [row] 
-                });
-                dashboards.set(sessionId, { message: msg, channel: targetChannel });
-            }
-        } catch (error) {
-            console.error(`❌ Failed to send group message for ${sessionId}:`, error);
         }
+
+        if (targetChannel) {
+            const participantMentions = userIds.map(id => `<@${id}>`).join(' ');
+
+            const phaseMessages = {
+                study: `🔥 **Focus time!** Time to concentrate and be productive!`,
+                break: `☕ **Break time!** Take a short rest and recharge!`,
+                long_break: `🌴 **Long break!** You've earned this extended rest!`
+            };
+
+            const message = `⏰ ${participantMentions} ${phaseMessages[phase]}`;
+
+            const msg = await targetChannel.send({
+                content: message,
+                embeds: [embed],
+                components: [row]
+            });
+            dashboards.set(sessionId, { message: msg, channel: targetChannel });
+        }
+    } catch (error) {
+        console.error(`❌ Failed to send group message for ${sessionId}:`, error);
     }
 }
 
@@ -500,94 +407,7 @@ async function sendSkipCompletionNotification(sessionId, skippedPhase, completed
     try {
         const channel = await client.channels.fetch(session.channelId);
         if (channel) {
-            // Send the skip notification
             await channel.send(message);
-
-            // If session is not complete, also send the timer embed for the new phase
-            if (!isSessionComplete) {
-                // Get the updated session to get the new phase info
-                const updatedSession = await GroupSession.findOne({ sessionId });
-                if (updatedSession && updatedSession.isActive) {
-                    const newPhase = updatedSession.phase;
-                    let duration;
-                    
-                    // Determine duration for the new phase
-                    if (newPhase === 'study') {
-                        duration = updatedSession.workDuration;
-                    } else if (newPhase === 'break') {
-                        duration = updatedSession.breakDuration;
-                    } else if (newPhase === 'long_break') {
-                        duration = updatedSession.longBreakDuration;
-                    }
-
-                    // Calculate end time for the new phase
-                    const endTime = new Date(Date.now() + duration * 60 * 1000);
-                    const endTimestamp = Math.floor(endTime.getTime() / 1000);
-                    
-                    // Create the timer embed for the new phase
-                    const progressBar = buildProgressBar(updatedSession.completedSessions, updatedSession.maxSessions);
-                    
-                    const newPhaseNames = {
-                        study: "📚 Focus Time",
-                        break: "☕ Short Break",
-                        long_break: "🌴 Long Break"
-                    };
-
-                    const phaseColors = {
-                        study: 0x3498db,      // blue
-                        break: 0xf1c40f,      // yellow
-                        long_break: 0x2ecc71  // green
-                    };
-
-                    const embed = new EmbedBuilder()
-                        .setTitle(`👥 Group Pomodoro — ${newPhaseNames[newPhase]}`)
-                        .setDescription(
-                            `⏳ Duration: **${duration} mins**\n` +
-                            `🕒 **Ends <t:${endTimestamp}:R>** • <t:${endTimestamp}:T>\n\n` +
-                            `📈 **Progress:**\n\`${progressBar}\``
-                        )
-                        .setColor(phaseColors[newPhase])
-                        .setFooter({ 
-                            text: `Session ${updatedSession.completedSessions}/${updatedSession.maxSessions} • ${sessionId}` 
-                        })
-                        .setTimestamp();
-
-                    const row = new ActionRowBuilder().addComponents(
-                        new ButtonBuilder()
-                            .setCustomId(`group_skip_${sessionId}`)
-                            .setLabel("⏭️ Skip Phase")
-                            .setStyle(ButtonStyle.Primary),
-                        new ButtonBuilder()
-                            .setCustomId(`group_end_${sessionId}`)
-                            .setLabel("⛔ Stop Session")
-                            .setStyle(ButtonStyle.Danger)
-                    );
-
-                    // Send the new phase timer embed
-                    const newPhaseMessages = {
-                        study: `🔥 **Focus time!** Time to concentrate and be productive!`,
-                        break: `☕ **Break time!** Take a short rest and recharge!`,
-                        long_break: `🌴 **Long break!** You've earned this extended rest!`
-                    };
-
-                    const timerMessage = `⏰ ${participantMentions} ${newPhaseMessages[newPhase]}`;
-                    
-                    const msg = await channel.send({ 
-                        content: timerMessage, 
-                        embeds: [embed], 
-                        components: [row] 
-                    });
-
-                    // Update the dashboard to track the new message
-                    dashboards.set(sessionId, { message: msg, channel: channel });
-                    
-                    // Update the session's actualEndTimestamp in the database
-                    await GroupSession.updateOne(
-                        { sessionId },
-                        { actualEndTimestamp: endTime }
-                    );
-                }
-            }
         }
     } catch (error) {
         console.error('❌ Error sending skip completion notification:', error);
