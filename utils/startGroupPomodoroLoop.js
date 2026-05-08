@@ -116,6 +116,8 @@ async function handlePhaseCompletion(sessionId, client) {
 
         // Check if we've completed all sessions
         if (newCompletedSessions >= maxSessions) {
+            await GroupSession.updateOne({ sessionId }, { completedSessions: newCompletedSessions });
+            await sendPhaseCompletionNotification(sessionId, phase, null, newCompletedSessions, client);
             await endGroupSession(sessionId, client);
             return;
         }
@@ -166,7 +168,10 @@ async function sendPhaseCompletionNotification(sessionId, completedPhase, nextPh
 
     let message;
     
-    if (completedPhase === 'study') {
+    if (nextPhase === null && completedPhase === 'study') {
+        // Final study session completed — group session finished
+        message = `${participantMentions}\n\n🎉 **Final ${phaseNames[completedPhase]}** completed!\n🏁 **Group session finished!**  ${currentCompletedSessions}/${session.maxSessions}`;
+    } else if (completedPhase === 'study') {
         // Study session completed
         const progressBar = buildProgressBar(currentCompletedSessions, session.maxSessions);
         message = `${participantMentions}\n\n✅ **${phaseNames[completedPhase]}** completed!\n📊 Progress: \`${progressBar}\` (${currentCompletedSessions}/${session.maxSessions} sessions)`;
