@@ -19,7 +19,16 @@ import {
   data as listMembersData,
   execute as listMembersExecute,
 } from "./commands/listMembers.js";
+import {
+  data as setupDeepFocusData,
+  execute as setupDeepFocusExecute,
+} from "./commands/setupDeepFocus.js";
+import {
+  data as deepFocusData,
+  execute as deepFocusExecute,
+} from "./commands/deepfocus.js";
 import { connectToCluster } from "./database/db.js";
+import { initMysqlSchema, testMysqlConnection } from "./database/mysql.js";
 import { handleRest } from "./handlers/pomodoro/rest.js";
 import { handleStart } from "./handlers/pomodoro/start.js";
 import { handleSetup } from "./handlers/pomodoro/setup.js";
@@ -32,6 +41,14 @@ import {
 } from "./utils/roomActiveCheckManager.js";
 // Add this import for group button handling
 import { handleGroupButtonInteraction } from "./handlers/pomodoro/group/buttonHandler.js";
+import { handleSetupComponent } from "./handlers/deepFocus/setup.js";
+import {
+  handleActivate,
+  handleActivateComponent,
+} from "./handlers/deepFocus/activate.js";
+import { handleExitButton } from "./handlers/deepFocus/exit.js";
+import { startPeriodicSweep } from "./utils/deepFocus/expiryScheduler.js";
+import { recoverDeepFocusSessions } from "./utils/deepFocus/recovery.js";
 
 // Create a new bot client with voice state intent
 export const client = new Client({
@@ -54,6 +71,8 @@ const commands = [
   pomodoroData.toJSON(),
   roomActiveCheckData.toJSON(),
   listMembersData.toJSON(),
+  setupDeepFocusData.toJSON(),
+  deepFocusData.toJSON(),
 ];
 
 // Add commands to collection
@@ -65,6 +84,8 @@ client.commands.set("ping", {
 client.commands.set("pomodoro", { execute: pomodoroExecute });
 client.commands.set("enable-roomactivecheck", { execute: roomActiveCheckExecute });
 client.commands.set("listmembers", { execute: listMembersExecute });
+client.commands.set("setupdeepfocus", { execute: setupDeepFocusExecute });
+client.commands.set("deepfocus", { execute: deepFocusExecute });
 
 // Initialize REST API
 const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
@@ -105,6 +126,15 @@ client.once(Events.ClientReady, async () => {
   } catch (error) {
     console.error("❌ Error initializing room active check system:", error);
   }
+
+  // Deep Focus: recover any in-flight sessions (survived a restart) and arm the sweep
+  try {
+    await recoverDeepFocusSessions(client);
+    startPeriodicSweep(client);
+    console.log("✅ Deep Focus recovery + sweep initialized");
+  } catch (error) {
+    console.error("❌ Error initializing Deep Focus runtime:", error);
+  }
 });
 
 // Handle interactions
@@ -125,21 +155,54 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
-// Handle button interactions
+// Handle button + component interactions
 client.on("interactionCreate", async (interaction) => {
+  // Deep Focus components (buttons + select menus)
+  if (interaction.isButton() || interaction.isAnySelectMenu()) {
+    const { customId } = interaction;
+
+    // Admin setup wizard
+    if (customId.startsWith("dfsetup_")) {
+      return handleSetupComponent(interaction, client);
+    }
+
+    // Pickup-message activate buttons
+    if (customId === "df_activate_badge") {
+      return handleActivate(interaction, client, { withBadge: true });
+    }
+    if (customId === "df_activate_plain") {
+      return handleActivate(interaction, client, { withBadge: false });
+    }
+
+    // Ephemeral activation flow (duration/exceptions/confirm)
+    if (
+      customId === "df_duration_picker" ||
+      customId === "df_exceptions_picker" ||
+      customId === "df_confirm_badge" ||
+      customId === "df_confirm_plain"
+    ) {
+      return handleActivateComponent(interaction, client);
+    }
+
+    // End-early button from the DM / ephemeral fallback
+    if (customId.startsWith("df_end_")) {
+      return handleExitButton(interaction, client);
+    }
+  }
+
   if (interaction.isButton()) {
     // Handle group button interactions FIRST (they have specific patterns)
     if (interaction.customId.startsWith('group_')) {
       return await handleGroupButtonInteraction(interaction, client);
     }
-    
+
     // Handle your existing group buttons (if any)
     if (interaction.customId.startsWith('skip_phase_') || interaction.customId.startsWith('stop_group_')) {
       // Your existing group button logic here
       console.log("Handling existing group button:", interaction.customId);
       return;
     }
-    
+
     // Individual Pomodoro buttons
     switch (interaction.customId) {
       case "start_session":
@@ -187,6 +250,14 @@ async function main() {
     await registerCommands();
     await connectToCluster(uri);
     console.log("💾 Database connected successfully");
+
+    try {
+      await testMysqlConnection();
+      await initMysqlSchema();
+      console.log("💾 MySQL (Deep Focus) connected + schema ready");
+    } catch (error) {
+      console.error("⚠️ MySQL not available — Deep Focus feature will be disabled:", error.message);
+    }
 
     await client.login(process.env.TOKEN);
   } catch (error) {
