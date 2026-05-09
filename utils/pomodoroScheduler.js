@@ -66,6 +66,7 @@ async function handlePhaseCompletion(userId, client) {
 
     // Check if this was the last session
     if (newCompletedSessions >= maxSessions) {
+      await Session.updateOne({ userId }, { completedSessions: newCompletedSessions });
       await endPomodoroSession(userId, client);
       return;
     }
