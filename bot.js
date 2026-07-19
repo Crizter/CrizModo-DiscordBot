@@ -32,6 +32,8 @@ import {
 } from "./utils/roomActiveCheckManager.js";
 // Add this import for group button handling
 import { handleGroupButtonInteraction } from "./handlers/pomodoro/group/buttonHandler.js";
+import { handleTicketMessage } from "./handlers/tickets/messageHandler.js";
+import { handleSuperVerificationButton } from "./handlers/tickets/superVerificationButtonHandler.js";
 
 // Create a new bot client with voice state intent
 export const client = new Client({
@@ -39,6 +41,8 @@ export const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildVoiceStates, // Added for voice channel monitoring
     GatewayIntentBits.GuildMembers, // Added for member access
+    GatewayIntentBits.GuildMessages, // Added for ticket message watching
+    GatewayIntentBits.MessageContent, // Added to read ticket message content
   ],
 });
 
@@ -132,7 +136,12 @@ client.on("interactionCreate", async (interaction) => {
     if (interaction.customId.startsWith('group_')) {
       return await handleGroupButtonInteraction(interaction, client);
     }
-    
+
+    // Super Verification approve/reject buttons
+    if (interaction.customId.startsWith('superverify_')) {
+      return await handleSuperVerificationButton(interaction, client);
+    }
+
     // Handle your existing group buttons (if any)
     if (interaction.customId.startsWith('skip_phase_') || interaction.customId.startsWith('stop_group_')) {
       // Your existing group button logic here
@@ -154,6 +163,15 @@ client.on("interactionCreate", async (interaction) => {
 
 // Handle voice state updates for room active check
 client.on(Events.VoiceStateUpdate, handleVoiceStateUpdate);
+
+// Handle messages in ticket channels (Super Verification, future FAQ auto-reply)
+client.on(Events.MessageCreate, async (message) => {
+  try {
+    await handleTicketMessage(message, client);
+  } catch (error) {
+    console.error("❌ Error handling ticket message:", error);
+  }
+});
 
 // Handle guild join events (set default feature state)
 client.on(Events.GuildCreate, async (guild) => {
