@@ -1,6 +1,7 @@
 import { removeParticipant, getUserGroupSession } from "../../../utils/groupPomodoroManager.js";
 import { getGroupSessionEmbed } from "../../../utils/getGroupSessionEmbed.js";
 import { GroupSession } from "../../../models/GroupSession.js";
+import { schedulePulseRefresh } from "../../../services/serverPulse/manager.js";
 
 export async function handleGroupLeave(interaction, client) {
     const userId = interaction.user.id;
@@ -17,6 +18,8 @@ export async function handleGroupLeave(interaction, client) {
 
         // Remove participant from session
         const updatedSession = await removeParticipant(groupSession.sessionId, userId);
+
+        schedulePulseRefresh(groupSession.guildId, client);
 
         // If session was ended (host left)
         if (updatedSession.status === 'completed') {

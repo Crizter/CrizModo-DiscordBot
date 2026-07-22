@@ -5,6 +5,7 @@ import {
     getDefaultSettings 
 } from "../../../utils/groupPomodoroManager.js";
 import { getGroupSessionEmbed } from "../../../utils/getGroupSessionEmbed.js";
+import { schedulePulseRefresh } from "../../../services/serverPulse/manager.js";
 
 export async function handleGroupCreate(interaction, client) {
     const userId = interaction.user.id;
@@ -62,6 +63,8 @@ export async function handleGroupCreate(interaction, client) {
         });
 
         await groupSession.save();
+
+        schedulePulseRefresh(guildId, client);
 
         // Generate embed and components
         const { embed, components } = await getGroupSessionEmbed(groupSession);

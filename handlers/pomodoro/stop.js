@@ -1,6 +1,7 @@
 // commands/pomodoro/stopsession.js
 import { Session } from "../../models/sessions.models.js";
 import { activeTimers } from "../../utils/pomodoroScheduler.js";
+import { schedulePulseRefresh } from "../../services/serverPulse/manager.js";
 import {
   ActionRowBuilder,
   ButtonBuilder,
@@ -30,7 +31,9 @@ export async function handleStopSession(interaction) {
 
     await Session.deleteOne({ _id: session._id });
 
-    const replyMsg = 
+    if (interaction.guildId) schedulePulseRefresh(interaction.guildId, interaction.client);
+
+    const replyMsg =
   "⏹️ Your Pomodoro session has been stopped. Take care!\n**Note:** After stopping the session, you need to reset the Pomodoro by running `/pomodoro setup`, otherwise the default `25/5/15` values will be used.";
 
     if (interaction.isButton()) {
