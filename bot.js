@@ -23,12 +23,18 @@ import {
   data as superverifyData,
   execute as superverifyExecute,
 } from "./commands/superverify.js";
+import {
+  data as serverpulseData,
+  execute as serverpulseExecute,
+} from "./commands/serverpulse.js";
 import { connectToCluster } from "./database/db.js";
 import { handleRest } from "./handlers/pomodoro/rest.js";
 import { handleStart } from "./handlers/pomodoro/start.js";
 import { handleSetup } from "./handlers/pomodoro/setup.js";
 import { handleStopSession } from "./handlers/pomodoro/stop.js";
 import { handleSkip } from "./handlers/pomodoro/skip.js";
+import { resumeAllActiveSessions } from "./utils/pomodoroScheduler.js";
+import { resumeAllActiveGroupSessions } from "./utils/startGroupPomodoroLoop.js";
 import { handleVoiceStateUpdate } from "./handlers/roomactivecheck/voiceStateUpdate.js";
 import {
   initializeGuildFeatureState,
@@ -41,6 +47,15 @@ import { handleSuperVerificationApplyButton } from "./handlers/superVerification
 import { handleSuperVerificationContinueButton } from "./handlers/superVerification/continueButtonHandler.js";
 import { handleSuperVerificationModalSubmit } from "./handlers/superVerification/modalSubmitHandler.js";
 import { handleSuperVerificationButton } from "./handlers/superVerification/reviewButtonHandler.js";
+import { handlePulseVoiceStateUpdate } from "./handlers/serverPulse/voiceStateUpdate.js";
+import {
+  initializeGuildPulseState,
+  removeGuildPulseState,
+  getPulseConfig,
+  schedulePulseRefresh,
+  startHourFlushTick,
+} from "./services/serverPulse/manager.js";
+import { rehydrateFromGuild } from "./services/serverPulse/voiceHours.js";
 import { SUPER_VERIFICATION_APPLY_CHANNEL_ID } from "./config/constants.js";
 
 // Create a new bot client with voice state intent
@@ -67,6 +82,7 @@ const commands = [
   roomActiveCheckData.toJSON(),
   listMembersData.toJSON(),
   superverifyData.toJSON(),
+  serverpulseData.toJSON(),
 ];
 
 // Add commands to collection
@@ -79,6 +95,7 @@ client.commands.set("pomodoro", { execute: pomodoroExecute });
 client.commands.set("enable-roomactivecheck", { execute: roomActiveCheckExecute });
 client.commands.set("listmembers", { execute: listMembersExecute });
 client.commands.set("superverify", { execute: superverifyExecute });
+client.commands.set("serverpulse", { execute: serverpulseExecute });
 
 // Initialize REST API
 const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
@@ -119,6 +136,37 @@ client.once(Events.ClientReady, async () => {
   } catch (error) {
     console.error("❌ Error initializing room active check system:", error);
   }
+
+  // Resume Pomodoro timers left running before the restart — otherwise
+  // every in-progress solo/group session silently stops advancing forever.
+  console.log("🔁 Resuming Pomodoro sessions from before restart...");
+  try {
+    await resumeAllActiveSessions(client);
+    await resumeAllActiveGroupSessions(client);
+  } catch (error) {
+    console.error("❌ Error resuming Pomodoro sessions:", error);
+  }
+
+  // Initialize Server Pulse: seed the config cache, and for any guild that
+  // already has it enabled, rehydrate the in-memory voice-hour tracker from
+  // who's currently sitting in voice (bot restarts otherwise lose nothing
+  // pre-restart — that's already flushed — but need a fresh "joined now"
+  // cursor for anyone still connected) and do an initial refresh.
+  console.log("🌐 Initializing Server Pulse system...");
+  for (const guild of client.guilds.cache.values()) {
+    try {
+      await initializeGuildPulseState(guild.id);
+      const config = await getPulseConfig(guild.id);
+      if (config?.enabled) {
+        rehydrateFromGuild(guild);
+        schedulePulseRefresh(guild.id, client);
+      }
+    } catch (error) {
+      console.error(`❌ Error initializing Server Pulse for guild ${guild.id}:`, error);
+    }
+  }
+  startHourFlushTick(client);
+  console.log("✅ Server Pulse system initialized");
 });
 
 // Handle interactions
@@ -198,6 +246,12 @@ client.on("interactionCreate", async (interaction) => {
 // Handle voice state updates for room active check
 client.on(Events.VoiceStateUpdate, handleVoiceStateUpdate);
 
+// Dedicated Server Pulse voice listener — kept separate from
+// roomactivecheck's handler above (that one has no debouncing and does a
+// fetch + up to 3 permission writes per event; Server Pulse must not inherit
+// that rate-limit risk under bursty voice joins).
+client.on(Events.VoiceStateUpdate, handlePulseVoiceStateUpdate);
+
 // Safety net: the Super Verification apply channel should be view-only for
 // regular users (set via Discord channel permissions) — auto-delete any
 // stray non-bot message there as a backstop.
@@ -222,6 +276,7 @@ client.on(Events.MessageCreate, async (message) => {
 client.on(Events.GuildCreate, async (guild) => {
   try {
     await initializeGuildFeatureState(guild.id);
+    await initializeGuildPulseState(guild.id);
     console.log(
       `🆕 Joined new guild and initialized database: ${guild.name} (${guild.id})`
     );
@@ -234,6 +289,7 @@ client.on(Events.GuildCreate, async (guild) => {
 client.on(Events.GuildDelete, async (guild) => {
   try {
     await removeGuildFeatureState(guild.id);
+    await removeGuildPulseState(guild.id);
     console.log(
       `👋 Left guild and cleaned up database: ${guild.name} (${guild.id})`
     );

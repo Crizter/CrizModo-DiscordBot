@@ -1,6 +1,7 @@
 import { Session } from "../../models/sessions.models.js";
 import { startPomodoroLoop, activeTimers } from "../../utils/pomodoroScheduler.js";
 import { getSessionEmbed } from "../../utils/getSessionEmbed.js";
+import { schedulePulseRefresh } from "../../services/serverPulse/manager.js";
 
 export async function handleStart(interaction, client) {
   const userId = interaction.user.id;
@@ -65,11 +66,14 @@ export async function handleStart(interaction, client) {
         endTime: userSession.workDuration,
         actualEndTimestamp: new Date(actualEndTime),
         startTime: new Date(),
-        channelId: channelId // Store the channel ID where command was used
+        channelId: channelId, // Store the channel ID where command was used
+        guildId: interaction.guildId
       }
     );
 
     console.log(`🚀 Created session for ${userId} in channel ${channelId} ending at ${new Date(actualEndTime).toLocaleTimeString()}`);
+
+    if (interaction.guildId) schedulePulseRefresh(interaction.guildId, client);
 
     // Send initial embed
     const { embed, components } = await getSessionEmbed(userId);

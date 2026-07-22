@@ -1,6 +1,7 @@
 import { getUserGroupSession, isHost } from "../../../utils/groupPomodoroManager.js";
 import { GroupSession } from "../../../models/GroupSession.js";
 import { activeGroupTimers } from "../../../utils/startGroupPomodoroLoop.js";
+import { schedulePulseRefresh } from "../../../services/serverPulse/manager.js";
 
 export async function handleGroupEnd(interaction, client) {
     const userId = interaction.user.id;
@@ -28,6 +29,8 @@ export async function handleGroupEnd(interaction, client) {
             { sessionId: groupSession.sessionId },
             { status: 'completed' }
         );
+
+        schedulePulseRefresh(groupSession.guildId, client);
 
         // Clear any active timer
         const timer = activeGroupTimers.get(groupSession.sessionId);

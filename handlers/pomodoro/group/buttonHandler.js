@@ -9,6 +9,7 @@ import {
 import { getGroupSessionEmbed } from "../../../utils/getGroupSessionEmbed.js";
 // Import your existing timer system instead of the new one
 import { startGroupPomodoroLoop } from "../../../utils/startGroupPomodoroLoop.js";
+import { schedulePulseRefresh } from "../../../services/serverPulse/manager.js";
 
 export async function handleGroupButtonInteraction(interaction, client) {
     const [action, sessionId] = interaction.customId.replace('group_', '').split('_');
@@ -71,6 +72,7 @@ async function handleJoinButton(interaction, groupSession, userId, client) {
 
     try {
         await addParticipant(groupSession.sessionId, userId);
+        schedulePulseRefresh(groupSession.guildId, client);
         const updatedSession = await GroupSession.findOne({ sessionId: groupSession.sessionId });
         const { embed, components } = await getGroupSessionEmbed(updatedSession);
 
@@ -135,6 +137,8 @@ async function handleStartButton(interaction, groupSession, userId, client) {
         const updatedSession = await GroupSession.findOne({ sessionId: groupSession.sessionId });
         const { embed, components } = await getGroupSessionEmbed(updatedSession);
 
+        schedulePulseRefresh(groupSession.guildId, client);
+
         await interaction.update({
             embeds: [embed],
             components
@@ -158,7 +162,8 @@ async function handleStartButton(interaction, groupSession, userId, client) {
 async function handleLeaveButton(interaction, groupSession, userId, client) {
     try {
         const updatedSession = await removeParticipant(groupSession.sessionId, userId);
-        
+        schedulePulseRefresh(groupSession.guildId, client);
+
         if (updatedSession.status === 'completed') {
             await interaction.reply({
                 content: "👋 You have left the session. Since you were the host, the session has ended.",
@@ -206,11 +211,13 @@ async function handleEndButton(interaction, groupSession, userId, client) {
         // End the session
         await GroupSession.updateOne(
             { sessionId: groupSession.sessionId },
-            { 
+            {
                 status: 'completed',
                 isActive: false  // Make sure this matches your existing schema
             }
         );
+
+        schedulePulseRefresh(groupSession.guildId, client);
 
         const completedSession = await GroupSession.findOne({ sessionId: groupSession.sessionId });
         const { embed } = await getGroupSessionEmbed(completedSession);
@@ -284,6 +291,7 @@ async function handleSkipButton(interaction, groupSession, userId, client) {
 
     // Execute the skip
     await handleGroupPhaseCompletion(groupSession.sessionId, client);
-    
+    schedulePulseRefresh(groupSession.guildId, client);
+
     console.log(`⏭️ ${phaseName} skipped for group session: ${groupSession.sessionId}`);
 }
