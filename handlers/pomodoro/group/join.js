@@ -1,6 +1,7 @@
 import { addParticipant, hasActiveSession } from "../../../utils/groupPomodoroManager.js";
 import { GroupSession } from "../../../models/GroupSession.js";
 import { getGroupSessionEmbed } from "../../../utils/getGroupSessionEmbed.js";
+import { schedulePulseRefresh } from "../../../services/serverPulse/manager.js";
 
 export async function handleGroupJoin(interaction, client) {
     const userId = interaction.user.id;
@@ -39,6 +40,8 @@ export async function handleGroupJoin(interaction, client) {
 
         // Add participant to session
         await addParticipant(sessionId, userId);
+
+        schedulePulseRefresh(groupSession.guildId, client);
 
         // Get updated session
         const updatedSession = await GroupSession.findOne({ sessionId });
