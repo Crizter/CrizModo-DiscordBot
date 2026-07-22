@@ -1,8 +1,6 @@
 import { GroupSession } from "../models/GroupSession.js";
 import { Session } from "../models/sessions.models.js";
-
-// Store group timers
-export const activeGroupTimers = new Map();
+import { activeGroupTimers } from "./startGroupPomodoroLoop.js";
 
 // Generate unique session ID
 export function generateSessionId() {

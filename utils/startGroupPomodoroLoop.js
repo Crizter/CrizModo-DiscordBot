@@ -1,4 +1,5 @@
 import { GroupSession } from "../models/GroupSession.js";
+import { schedulePulseRefresh } from "../services/serverPulse/manager.js";
 import {
     EmbedBuilder,
     ActionRowBuilder,
@@ -33,6 +34,41 @@ export async function startGroupPomodoroLoop(sessionId, client) {
     console.log(`📊 Current state - Sessions: ${session.completedSessions}/${session.maxSessions}, Phase: ${session.phase}`);
 
     runPhase(sessionId, client);
+}
+
+// Called once on bot boot: re-arms a timer for every group session left
+// `status: 'active'` from before the restart, using actualEndTimeStamp
+// instead of the full phase duration. Without this, a restart silently
+// orphans every running group session — and unlike solo Sessions, GroupSession
+// has no TTL at all for `active` docs (only `completed` ones expire), so a
+// stuck session sits in the DB forever until a participant notices and
+// manually runs /pomodoro group end or leave.
+// Same known limitation as resumeAllActiveSessions: only catches up one
+// phase boundary per session on boot, not an exact multi-phase replay.
+export async function resumeAllActiveGroupSessions(client) {
+    const sessions = await GroupSession.find({ status: "active" });
+    console.log(`🔁 Resuming ${sessions.length} active group Pomodoro session(s) after restart`);
+
+    for (const session of sessions) {
+        const { sessionId } = session;
+
+        const existingTimer = activeGroupTimers.get(sessionId);
+        if (existingTimer) {
+            clearTimeout(existingTimer);
+            activeGroupTimers.delete(sessionId);
+        }
+
+        const remainingMs = session.actualEndTimeStamp
+            ? session.actualEndTimeStamp.getTime() - Date.now()
+            : 0;
+
+        const timerId = setTimeout(() => {
+            activeGroupTimers.delete(sessionId);
+            handlePhaseCompletion(sessionId, client);
+        }, Math.max(0, remainingMs));
+
+        activeGroupTimers.set(sessionId, timerId);
+    }
 }
 
 async function runPhase(sessionId, client) {
@@ -93,6 +129,7 @@ async function runPhase(sessionId, client) {
     }, duration * 60 * 1000);
 
     activeGroupTimers.set(sessionId, timerId);
+    schedulePulseRefresh(session.guildId, client);
 }
 
 async function handlePhaseCompletion(sessionId, client) {
@@ -144,6 +181,8 @@ async function handlePhaseCompletion(sessionId, client) {
     }
 
     await GroupSession.updateOne({ sessionId }, updateData);
+
+    schedulePulseRefresh(session.guildId, client);
 
     // Send phase completion notification to users
     await sendPhaseCompletionNotification(sessionId, phase, nextPhase, shouldIncrementSession ? completedSessions + 1 : completedSessions, client);
@@ -281,6 +320,8 @@ async function endGroupSession(sessionId, client) {
     );
 
     if (!session) return;
+
+    schedulePulseRefresh(session.guildId, client);
 
     // Clear timer and dashboard
     const timer = activeGroupTimers.get(sessionId);
