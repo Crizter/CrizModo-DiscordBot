@@ -4,10 +4,27 @@ import {
   SUPER_VERIFICATION_NUMBERING_CHANNEL_ID,
 } from "../../config/constants.js";
 import { SuperVerificationApplication } from "../../models/SuperVerificationApplication.js";
-import { REJECTION_MESSAGE } from "./superVerificationHandler.js";
+import { REJECTION_MESSAGE } from "./modalSubmitHandler.js";
+import { SUPER_VERIFICATION_QUESTION_TEXTS } from "../../services/superVerificationModals.js";
 
 const APPLICATION_SUBMITTED_MESSAGE =
   "Your Super Verification application has been submitted. You're on hold — a moderator will follow up in due time.";
+
+// Applicants only ever reach the bot through the apply-channel modal flow —
+// there's no ticket to reply in anymore, so the decision reaches them via DM
+// instead (this can happen long after the original interaction, well past
+// its 15-minute follow-up window).
+async function dmApplicant(client, applicantId, content) {
+  const user = await client.users.fetch(applicantId).catch(() => null);
+  if (!user) return false;
+  try {
+    await user.send(content);
+    return true;
+  } catch (error) {
+    console.error(`❌ Could not DM applicant ${applicantId}:`, error.message);
+    return false;
+  }
+}
 
 export async function handleSuperVerificationButton(interaction, client) {
   const isApprove = interaction.customId.startsWith("superverify_approve_");
@@ -37,16 +54,19 @@ export async function handleSuperVerificationButton(interaction, client) {
     });
   }
 
-  const ticketChannel = await client.channels
-    .fetch(application.ticketChannelId)
-    .catch(() => null);
+  let dmDelivered = true;
 
   try {
     if (isReject) {
-      if (ticketChannel) await ticketChannel.send(REJECTION_MESSAGE);
+      dmDelivered = await dmApplicant(
+        client,
+        application.applicantId,
+        REJECTION_MESSAGE
+      );
       await updateReviewMessage(
         interaction,
-        `❌ Rejected by ${interaction.user.username}`
+        `❌ Rejected by ${interaction.user.username}`,
+        dmDelivered
       );
     } else {
       const numberingChannel = await client.channels.fetch(
@@ -64,21 +84,27 @@ export async function handleSuperVerificationButton(interaction, client) {
         )
         .setColor(0x57f287);
       application.answers.forEach((answer, i) => {
+        const question = SUPER_VERIFICATION_QUESTION_TEXTS[i] ?? `Question ${i + 1}`;
         answersEmbed.addFields({
-          name: `${i + 1}.`,
+          name: `${i + 1}. ${question}`.slice(0, 256),
           value: answer.slice(0, 1024) || "—",
         });
       });
       await answersChannel.send({ embeds: [answersEmbed] });
       await numberingChannel.send(
-        `**${nextNumber}** - **${application.applicantUsername}**`
+        `**${nextNumber}** - <@${application.applicantId}>`
       );
 
-      if (ticketChannel) await ticketChannel.send(APPLICATION_SUBMITTED_MESSAGE);
+      dmDelivered = await dmApplicant(
+        client,
+        application.applicantId,
+        APPLICATION_SUBMITTED_MESSAGE
+      );
 
       await updateReviewMessage(
         interaction,
-        `✅ Approved by ${interaction.user.username} — #${nextNumber}`
+        `✅ Approved by ${interaction.user.username} — #${nextNumber}`,
+        dmDelivered
       );
     }
   } catch (error) {
@@ -93,15 +119,19 @@ export async function handleSuperVerificationButton(interaction, client) {
 
   // Hard delete once fully handled either way — free-tier Mongo cluster, no
   // need to keep resolved applications around; the messages posted above
-  // (or the rejection reply) are the permanent record from here on.
+  // (or the DM) are the permanent record from here on.
   await SuperVerificationApplication.deleteOne({ _id: application._id });
 }
 
-async function updateReviewMessage(interaction, note) {
+async function updateReviewMessage(interaction, note, dmDelivered) {
+  const fullNote = dmDelivered
+    ? note
+    : `${note} (⚠️ could not DM applicant — reach out manually)`;
+
   const originalEmbed = interaction.message.embeds[0];
   const embed = originalEmbed
-    ? EmbedBuilder.from(originalEmbed).setFooter({ text: note })
-    : new EmbedBuilder().setDescription(note);
+    ? EmbedBuilder.from(originalEmbed).setFooter({ text: fullNote })
+    : new EmbedBuilder().setDescription(fullNote);
 
   await interaction.editReply({ embeds: [embed], components: [] });
 }

@@ -19,6 +19,10 @@ import {
   data as listMembersData,
   execute as listMembersExecute,
 } from "./commands/listMembers.js";
+import {
+  data as superverifyData,
+  execute as superverifyExecute,
+} from "./commands/superverify.js";
 import { connectToCluster } from "./database/db.js";
 import { handleRest } from "./handlers/pomodoro/rest.js";
 import { handleStart } from "./handlers/pomodoro/start.js";
@@ -33,7 +37,11 @@ import {
 // Add this import for group button handling
 import { handleGroupButtonInteraction } from "./handlers/pomodoro/group/buttonHandler.js";
 import { handleTicketMessage } from "./handlers/tickets/messageHandler.js";
-import { handleSuperVerificationButton } from "./handlers/tickets/superVerificationButtonHandler.js";
+import { handleSuperVerificationApplyButton } from "./handlers/superVerification/applyButtonHandler.js";
+import { handleSuperVerificationContinueButton } from "./handlers/superVerification/continueButtonHandler.js";
+import { handleSuperVerificationModalSubmit } from "./handlers/superVerification/modalSubmitHandler.js";
+import { handleSuperVerificationButton } from "./handlers/superVerification/reviewButtonHandler.js";
+import { SUPER_VERIFICATION_APPLY_CHANNEL_ID } from "./config/constants.js";
 
 // Create a new bot client with voice state intent
 export const client = new Client({
@@ -58,6 +66,7 @@ const commands = [
   pomodoroData.toJSON(),
   roomActiveCheckData.toJSON(),
   listMembersData.toJSON(),
+  superverifyData.toJSON(),
 ];
 
 // Add commands to collection
@@ -69,6 +78,7 @@ client.commands.set("ping", {
 client.commands.set("pomodoro", { execute: pomodoroExecute });
 client.commands.set("enable-roomactivecheck", { execute: roomActiveCheckExecute });
 client.commands.set("listmembers", { execute: listMembersExecute });
+client.commands.set("superverify", { execute: superverifyExecute });
 
 // Initialize REST API
 const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
@@ -137,8 +147,17 @@ client.on("interactionCreate", async (interaction) => {
       return await handleGroupButtonInteraction(interaction, client);
     }
 
-    // Super Verification approve/reject buttons
-    if (interaction.customId.startsWith('superverify_')) {
+    // Super Verification buttons — order matters, most specific prefixes first
+    if (interaction.customId === 'superverify_apply_start') {
+      return await handleSuperVerificationApplyButton(interaction, client);
+    }
+    if (interaction.customId.startsWith('superverify_continue_')) {
+      return await handleSuperVerificationContinueButton(interaction, client);
+    }
+    if (
+      interaction.customId.startsWith('superverify_approve_') ||
+      interaction.customId.startsWith('superverify_reject_')
+    ) {
       return await handleSuperVerificationButton(interaction, client);
     }
 
@@ -148,7 +167,7 @@ client.on("interactionCreate", async (interaction) => {
       console.log("Handling existing group button:", interaction.customId);
       return;
     }
-    
+
     // Individual Pomodoro buttons
     switch (interaction.customId) {
       case "start_session":
@@ -158,13 +177,39 @@ client.on("interactionCreate", async (interaction) => {
       case "skip_phase":
         return handleSkip(interaction);
     }
+    return;
+  }
+
+  if (interaction.isModalSubmit()) {
+    if (interaction.customId.startsWith('superverify_modal_')) {
+      try {
+        return await handleSuperVerificationModalSubmit(interaction, client);
+      } catch (error) {
+        console.error("❌ Error handling super verification modal:", error);
+        return interaction.reply({
+          content: "❌ Something went wrong processing that step. Please try again.",
+          flags: 64,
+        });
+      }
+    }
   }
 });
 
 // Handle voice state updates for room active check
 client.on(Events.VoiceStateUpdate, handleVoiceStateUpdate);
 
-// Handle messages in ticket channels (Super Verification, future FAQ auto-reply)
+// Safety net: the Super Verification apply channel should be view-only for
+// regular users (set via Discord channel permissions) — auto-delete any
+// stray non-bot message there as a backstop.
+client.on(Events.MessageCreate, async (message) => {
+  if (message.author.bot) return;
+  if (message.channel.id !== SUPER_VERIFICATION_APPLY_CHANNEL_ID) return;
+  await message.delete().catch((error) => {
+    console.error("❌ Could not delete stray message in apply channel:", error.message);
+  });
+});
+
+// Handle messages in ticket channels (future FAQ auto-reply)
 client.on(Events.MessageCreate, async (message) => {
   try {
     await handleTicketMessage(message, client);

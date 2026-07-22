@@ -13,5 +13,10 @@ export const PATREON_ROLE_ID = "1268205706335752224";
 export const SUPER_VERIFICATION_ANSWERS_CHANNEL_ID = "966423204891598908";
 export const SUPER_VERIFICATION_NUMBERING_CHANNEL_ID = "989524291097858048";
 export const SUPER_VERIFICATION_REVIEW_CHANNEL_ID = "1528209117812883567";
+// View-only channel where the apply message + Start button live. Regular
+// users should not be able to send messages here (set via Discord channel
+// permissions) — the bot also auto-deletes any stray non-bot message as a
+// safety net.
+export const SUPER_VERIFICATION_APPLY_CHANNEL_ID = "1528378646228631612";
 
 export const SUPER_VERIFICATION_ENABLED = true;

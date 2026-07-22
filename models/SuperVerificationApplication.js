@@ -5,10 +5,6 @@ const superVerificationApplicationSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  ticketChannelId: {
-    type: String,
-    required: true,
-  },
   applicantId: {
     type: String,
     required: true,
