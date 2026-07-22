@@ -31,6 +31,10 @@ import {
   data as deepfocusData,
   execute as deepfocusExecute,
 } from "./commands/deepfocus.js";
+import {
+  data as helpData,
+  execute as helpExecute,
+} from "./commands/help.js";
 import { connectToCluster } from "./database/db.js";
 import { handleRest } from "./handlers/pomodoro/rest.js";
 import { handleStart } from "./handlers/pomodoro/start.js";
@@ -93,6 +97,7 @@ const commands = [
   superverifyData.toJSON(),
   serverpulseData.toJSON(),
   deepfocusData.toJSON(),
+  helpData.toJSON(),
 ];
 
 // Add commands to collection
@@ -107,6 +112,7 @@ client.commands.set("listmembers", { execute: listMembersExecute });
 client.commands.set("superverify", { execute: superverifyExecute });
 client.commands.set("serverpulse", { execute: serverpulseExecute });
 client.commands.set("deepfocus", { execute: deepfocusExecute });
+client.commands.set("help", { execute: helpExecute });
 
 // Initialize REST API
 const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
