@@ -1,5 +1,6 @@
 import { Session } from "../models/sessions.models.js";
 import { getSessionEmbed } from "./getSessionEmbed.js";
+import { schedulePulseRefresh } from "../services/serverPulse/manager.js";
 
 export const activeTimers = new Map();
 
@@ -31,6 +32,42 @@ export async function startPomodoroLoop(userId, client) {
   }, session.workDuration * 60 * 1000);
 
   activeTimers.set(userId, timeoutId);
+}
+
+// Called once on bot boot: re-arms a timer for every session left `isActive`
+// from before the restart, using the phase's actualEndTimestamp instead of
+// the full phase duration. Without this, a restart silently orphans every
+// running solo session — the DB doc stays isActive forever (or until the
+// unconditional 10h TTL), but nothing ever fires its next phase again.
+// Known limitation: if the bot was down long enough for more than one phase
+// boundary to pass, this only catches up one phase per session on boot —
+// handlePhaseCompletion re-arms the *next* phase at full duration from now,
+// not further compressed. Acceptable for restarts on the order of minutes;
+// not exact for multi-hour outages.
+export async function resumeAllActiveSessions(client) {
+  const sessions = await Session.find({ isActive: true });
+  console.log(`🔁 Resuming ${sessions.length} active solo Pomodoro session(s) after restart`);
+
+  for (const session of sessions) {
+    const { userId } = session;
+
+    const existingTimer = activeTimers.get(userId);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+      activeTimers.delete(userId);
+    }
+
+    const remainingMs = session.actualEndTimestamp
+      ? session.actualEndTimestamp.getTime() - Date.now()
+      : 0;
+
+    const timeoutId = setTimeout(() => {
+      activeTimers.delete(userId);
+      handlePhaseCompletion(userId, client);
+    }, Math.max(0, remainingMs));
+
+    activeTimers.set(userId, timeoutId);
+  }
 }
 
 async function handlePhaseCompletion(userId, client) {
@@ -106,6 +143,8 @@ async function handlePhaseCompletion(userId, client) {
   }
 
   await Session.updateOne({ userId }, updateData);
+
+  if (session.guildId) schedulePulseRefresh(session.guildId, client);
 
   console.log(`🔄 Phase transition: ${currentPhase} → ${nextPhase} (${duration}m)`);
   console.log(`⏰ New phase will end at: ${new Date(actualEndTime).toLocaleTimeString()}`);
@@ -265,7 +304,9 @@ async function endPomodoroSession(userId, client) {
     
     // Update session to inactive
     await Session.updateOne({ userId }, { isActive: false });
-    
+
+    if (session?.guildId) schedulePulseRefresh(session.guildId, client);
+
     // Clear timer
     const timer = activeTimers.get(userId);
     if (timer) {

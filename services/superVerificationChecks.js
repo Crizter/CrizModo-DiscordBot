@@ -1,6 +1,7 @@
 import {
   YOUTUBE_MEMBER_ROLE_ID,
   PATREON_ROLE_ID,
+  BOOSTER_ROLE_ID,
 } from "../config/constants.js";
 
 const MIN_SERVER_AGE_MS = 30 * 24 * 60 * 60 * 1000; // ~1 month
@@ -36,12 +37,15 @@ function usernamesLooselyMatch(stated, actual) {
 // checked here — they're always a human call in the mod-review channel.
 // YouTube Member / Patreon roles bypass EVERY requirement, not just the
 // human-only ones — knowledge.md requirement 6 exempts them outright.
+// Server Boosters get the same bypass (added on top of requirement 6, not
+// documented there).
 export function runSuperVerificationChecks(member, answers) {
   const reasons = [];
 
   const bypassApplies = Boolean(
     (YOUTUBE_MEMBER_ROLE_ID && member.roles.cache.has(YOUTUBE_MEMBER_ROLE_ID)) ||
-      (PATREON_ROLE_ID && member.roles.cache.has(PATREON_ROLE_ID))
+      (PATREON_ROLE_ID && member.roles.cache.has(PATREON_ROLE_ID)) ||
+      (BOOSTER_ROLE_ID && member.roles.cache.has(BOOSTER_ROLE_ID))
   );
 
   const hasBlankAnswer = answers.some(

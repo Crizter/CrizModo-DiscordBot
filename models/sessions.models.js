@@ -10,6 +10,10 @@ const sessionSchema = new mongoose.Schema(
       type: String,
       required: false, // Channel where the pomodoro was started
     },
+    guildId: {
+      type: String,
+      required: false, // Absent on pre-migration sessions; these TTL out within 10 hours
+    },
     startTime: {
       type: Date,
       required: true,
