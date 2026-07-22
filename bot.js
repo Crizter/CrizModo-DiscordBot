@@ -27,6 +27,10 @@ import {
   data as serverpulseData,
   execute as serverpulseExecute,
 } from "./commands/serverpulse.js";
+import {
+  data as deepfocusData,
+  execute as deepfocusExecute,
+} from "./commands/deepfocus.js";
 import { connectToCluster } from "./database/db.js";
 import { handleRest } from "./handlers/pomodoro/rest.js";
 import { handleStart } from "./handlers/pomodoro/start.js";
@@ -56,6 +60,11 @@ import {
   startHourFlushTick,
 } from "./services/serverPulse/manager.js";
 import { rehydrateFromGuild } from "./services/serverPulse/voiceHours.js";
+import { handleDeepFocusButton } from "./handlers/deepFocus/buttonHandler.js";
+import {
+  startDeepFocusSweep,
+  closeSessionForDepartedMember,
+} from "./services/deepFocus/manager.js";
 import { SUPER_VERIFICATION_APPLY_CHANNEL_ID } from "./config/constants.js";
 
 // Create a new bot client with voice state intent
@@ -83,6 +92,7 @@ const commands = [
   listMembersData.toJSON(),
   superverifyData.toJSON(),
   serverpulseData.toJSON(),
+  deepfocusData.toJSON(),
 ];
 
 // Add commands to collection
@@ -96,6 +106,7 @@ client.commands.set("enable-roomactivecheck", { execute: roomActiveCheckExecute 
 client.commands.set("listmembers", { execute: listMembersExecute });
 client.commands.set("superverify", { execute: superverifyExecute });
 client.commands.set("serverpulse", { execute: serverpulseExecute });
+client.commands.set("deepfocus", { execute: deepfocusExecute });
 
 // Initialize REST API
 const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
@@ -167,6 +178,11 @@ client.once(Events.ClientReady, async () => {
   }
   startHourFlushTick(client);
   console.log("✅ Server Pulse system initialized");
+
+  // Deep Focus expiry/recovery sweep — DB-driven, so restarts can't orphan a
+  // session (expiry lives in expiresAt, not in an in-memory timer).
+  startDeepFocusSweep(client);
+  console.log("✅ Deep Focus sweep started");
 });
 
 // Handle interactions
@@ -193,6 +209,11 @@ client.on("interactionCreate", async (interaction) => {
     // Handle group button interactions FIRST (they have specific patterns)
     if (interaction.customId.startsWith('group_')) {
       return await handleGroupButtonInteraction(interaction, client);
+    }
+
+    // Deep Focus enter/exit buttons
+    if (interaction.customId.startsWith('deepfocus_')) {
+      return await handleDeepFocusButton(interaction, client);
     }
 
     // Super Verification buttons — order matters, most specific prefixes first
@@ -269,6 +290,17 @@ client.on(Events.MessageCreate, async (message) => {
     await handleTicketMessage(message, client);
   } catch (error) {
     console.error("❌ Error handling ticket message:", error);
+  }
+});
+
+// User leaves mid-Deep-Focus: close the session but KEEP savedRoleIds — the
+// roles are gone with the membership, but staff can restore from the doc or
+// the log message if they rejoin. No auto-restore on rejoin in v1.
+client.on(Events.GuildMemberRemove, async (member) => {
+  try {
+    await closeSessionForDepartedMember(member.guild.id, member.id);
+  } catch (error) {
+    console.error("❌ Error closing Deep Focus session for departed member:", error);
   }
 });
 

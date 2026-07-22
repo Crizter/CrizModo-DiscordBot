@@ -1,0 +1,69 @@
+import { SlashCommandBuilder } from "discord.js";
+import { handleDeepFocusStart } from "../handlers/deepFocus/start.js";
+import { handleDeepFocusExit } from "../handlers/deepFocus/exit.js";
+import { handleDeepFocusStatus } from "../handlers/deepFocus/status.js";
+import { handleDeepFocusPostMessage } from "../handlers/deepFocus/postMessage.js";
+import { DEFAULT_DURATION_HOURS, MAX_DURATION_HOURS } from "../services/deepFocus/manager.js";
+
+// No setDefaultMemberPermissions — start/exit/status are for everyone.
+// post-message enforces ManageChannels at runtime in its handler.
+export const data = new SlashCommandBuilder()
+    .setName("deepfocus")
+    .setDescription("Deep Focus mode — hide distracting channels while you study")
+    .addSubcommand(subcommand =>
+        subcommand
+            .setName("start")
+            .setDescription("Enter Deep Focus — access roles saved & stripped, channels hidden")
+            .addIntegerOption(option =>
+                option.setName("hours")
+                    .setDescription(`Auto-exit after this many hours (default ${DEFAULT_DURATION_HOURS})`)
+                    .setRequired(false)
+                    .setMinValue(1)
+                    .setMaxValue(MAX_DURATION_HOURS)
+            )
+            .addBooleanOption(option =>
+                option.setName("show-tag")
+                    .setDescription("Show a 🧘 tag in your name while focusing (default: yes)")
+                    .setRequired(false)
+            )
+    )
+    .addSubcommand(subcommand =>
+        subcommand
+            .setName("exit")
+            .setDescription("Exit Deep Focus and restore your roles")
+    )
+    .addSubcommand(subcommand =>
+        subcommand
+            .setName("status")
+            .setDescription("Check your Deep Focus status and time remaining")
+    )
+    .addSubcommand(subcommand =>
+        subcommand
+            .setName("post-message")
+            .setDescription("Post the Deep Focus entry/exit message in this channel (admin)")
+    );
+
+export async function execute(interaction, client) {
+    const subcommand = interaction.options.getSubcommand();
+    switch (subcommand) {
+        case "start": {
+            const hours = interaction.options.getInteger("hours") ?? DEFAULT_DURATION_HOURS;
+            // null when omitted → the user's stored preference decides;
+            // explicit true/false also becomes their sticky preference.
+            const showTag = interaction.options.getBoolean("show-tag");
+            await handleDeepFocusStart(interaction, client, hours, showTag);
+            break;
+        }
+        case "exit":
+            await handleDeepFocusExit(interaction, client);
+            break;
+        case "status":
+            await handleDeepFocusStatus(interaction);
+            break;
+        case "post-message":
+            await handleDeepFocusPostMessage(interaction);
+            break;
+        default:
+            await interaction.reply({ content: "❌ Invalid Deep Focus command.", flags: 64 });
+    }
+}

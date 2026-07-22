@@ -21,3 +21,26 @@ export const SUPER_VERIFICATION_REVIEW_CHANNEL_ID = "1528209117812883567";
 export const SUPER_VERIFICATION_APPLY_CHANNEL_ID = "1528378646228631612";
 
 export const SUPER_VERIFICATION_ENABLED = true;
+
+// Deep Focus mode. The Deep Focus role carries ViewChannel-deny overwrites on
+// most categories (configured manually by admins in Discord — the bot never
+// touches channel overwrites). Because a role-level ALLOW beats a role-level
+// DENY, the bot strips the access roles below on entry (after snapshotting
+// them to the log channel + DB) and restores them on exit/expiry.
+export const DEEP_FOCUS_ENABLED = true;
+export const DEEP_FOCUS_ROLE_ID = "989664630500626434";
+// Channel where role snapshots are logged — the manual recovery backup if DB
+// data is ever lost.
+export const DEEP_FOCUS_LOG_CHANNEL_ID = "1529614165306507304";
+// Access roles stripped on entry (Permission Only, Super-Verified channel,
+// Cam Only channel, etc.) — the roles whose channel-level ViewChannel allows
+// would otherwise defeat the Deep Focus role's denies.
+export const DEEP_FOCUS_STRIPPABLE_ROLE_IDS = [
+  "950929377363906581",
+  "966431293904658533",
+  "961314937874034708",
+  "992491016080871625",
+  "992491302358888519",
+  "992491245383467209",
+  "961293321093927003",
+];
