@@ -1,5 +1,6 @@
 import { GroupSession } from "../models/GroupSession.js";
 import { schedulePulseRefresh } from "../services/serverPulse/manager.js";
+import { POMODORO_FALLBACK_CHANNEL_ID } from "../config/constants.js";
 import {
     EmbedBuilder,
     ActionRowBuilder,
@@ -14,6 +15,36 @@ function buildProgressBar(completed, max) {
     const filled = "█".repeat(completed);
     const empty = "░".repeat(max - completed);
     return `${filled}${empty}`;
+}
+
+function canSend(channel, guild) {
+    return !!channel?.isTextBased?.() &&
+        !!channel.permissionsFor(guild.members.me)?.has(["SendMessages", "ViewChannel"]);
+}
+
+// Group sessions broadcast one shared message to every participant, so
+// unlike solo sessions there's no single user's voice channel to "follow" —
+// this only adds a safety net for when the lobby channel itself is gone
+// (e.g. a temporary voice channel deleted after everyone left it), in
+// priority order: the lobby channel → the configured fallback channel →
+// the guild's system channel, as a last resort.
+async function resolveGroupChannel(session, client) {
+    const guild = client.guilds.cache.get(session.guildId);
+    if (!guild) return null;
+
+    const lobbyChannel = guild.channels.cache.get(session.channelId)
+        ?? await guild.channels.fetch(session.channelId).catch(() => null);
+    if (canSend(lobbyChannel, guild)) return lobbyChannel;
+
+    if (POMODORO_FALLBACK_CHANNEL_ID) {
+        const fallbackChannel = guild.channels.cache.get(POMODORO_FALLBACK_CHANNEL_ID)
+            ?? await guild.channels.fetch(POMODORO_FALLBACK_CHANNEL_ID).catch(() => null);
+        if (canSend(fallbackChannel, guild)) return fallbackChannel;
+    }
+
+    const systemChannel = guild.systemChannel
+        || guild.channels.cache.find((ch) => ch.isTextBased() && ch.viewable);
+    return canSend(systemChannel, guild) ? systemChannel : null;
 }
 
 export async function startGroupPomodoroLoop(sessionId, client) {
@@ -220,9 +251,11 @@ async function sendPhaseCompletionNotification(sessionId, completedPhase, nextPh
     }
 
     try {
-        const channel = await client.channels.fetch(session.channelId);
+        const channel = await resolveGroupChannel(session, client);
         if (channel) {
             await channel.send(message);
+        } else {
+            console.error(`❌ No deliverable channel for phase completion notification: ${sessionId}`);
         }
     } catch (error) {
         console.error('❌ Error sending phase completion notification:', error);
@@ -278,13 +311,7 @@ async function sendPhaseNotification(sessionId, phase, duration, endTime, client
     );
 
     try {
-        let targetChannel = null;
-        for (const [, guild] of client.guilds.cache) {
-            if (guild.id === session.guildId) {
-                targetChannel = guild.channels.cache.get(session.channelId);
-                break;
-            }
-        }
+        const targetChannel = await resolveGroupChannel(session, client);
 
         if (targetChannel) {
             const participantMentions = userIds.map(id => `<@${id}>`).join(' ');
@@ -451,9 +478,11 @@ async function sendSkipCompletionNotification(sessionId, skippedPhase, completed
     }
 
     try {
-        const channel = await client.channels.fetch(session.channelId);
+        const channel = await resolveGroupChannel(session, client);
         if (channel) {
             await channel.send(message);
+        } else {
+            console.error(`❌ No deliverable channel for skip completion notification: ${sessionId}`);
         }
     } catch (error) {
         console.error('❌ Error sending skip completion notification:', error);

@@ -1,8 +1,70 @@
 import { Session } from "../models/sessions.models.js";
 import { getSessionEmbed } from "./getSessionEmbed.js";
 import { schedulePulseRefresh } from "../services/serverPulse/manager.js";
+import { POMODORO_FALLBACK_CHANNEL_ID } from "../config/constants.js";
 
 export const activeTimers = new Map();
+
+function canSend(channel, guild) {
+  return !!channel?.isTextBased?.() &&
+    !!channel.permissionsFor(guild.members.me)?.has(["SendMessages", "ViewChannel"]);
+}
+
+// Finds the guild + originally-started-in channel for a session. Prefers a
+// direct guildId lookup (always set since start.js began storing it); falls
+// back to scanning every guild for the channel only for pre-migration
+// sessions with no guildId (these TTL out within 10 hours, so this path is
+// short-lived). Scanning-by-channel can't recover once the channel itself
+// is deleted, which is exactly the gap the direct guildId lookup closes.
+async function findGuildAndChannel(session, client) {
+  if (session.guildId) {
+    const guild = client.guilds.cache.get(session.guildId);
+    if (guild) {
+      const channel = guild.channels.cache.get(session.channelId)
+        ?? await guild.channels.fetch(session.channelId).catch(() => null);
+      return { guild, channel };
+    }
+  }
+
+  for (const [, guild] of client.guilds.cache) {
+    const channel = guild.channels.cache.get(session.channelId)
+      ?? await guild.channels.fetch(session.channelId).catch(() => null);
+    if (channel) return { guild, channel };
+  }
+
+  return { guild: null, channel: null };
+}
+
+// Resolves where to deliver a solo Pomodoro notification, in priority order:
+// 1) the user's current voice channel, if they're in one — the session
+//    "follows" them so it never keeps posting into a channel they've left,
+//    which also matters because that original channel is often a temporary
+//    voice channel that gets deleted once they leave it;
+// 2) the channel the session was started in, if it still exists (used when
+//    the user isn't in voice);
+// 3) the configured fallback channel, for when the original is gone and
+//    there's no live voice channel to use instead;
+// 4) the guild's system channel / first viewable text channel, as a last resort.
+async function resolveNotificationChannel(session, client) {
+  const { guild, channel: originalChannel } = await findGuildAndChannel(session, client);
+  if (!guild) return { guild: null, channel: null };
+
+  const member = await guild.members.fetch(session.userId).catch(() => null);
+  const voiceChannel = member?.voice?.channel;
+
+  if (canSend(voiceChannel, guild)) return { guild, channel: voiceChannel };
+  if (canSend(originalChannel, guild)) return { guild, channel: originalChannel };
+
+  if (POMODORO_FALLBACK_CHANNEL_ID) {
+    const fallbackChannel = guild.channels.cache.get(POMODORO_FALLBACK_CHANNEL_ID)
+      ?? await guild.channels.fetch(POMODORO_FALLBACK_CHANNEL_ID).catch(() => null);
+    if (canSend(fallbackChannel, guild)) return { guild, channel: fallbackChannel };
+  }
+
+  const systemChannel = guild.systemChannel
+    || guild.channels.cache.find((ch) => ch.isTextBased() && ch.viewable);
+  return { guild, channel: canSend(systemChannel, guild) ? systemChannel : null };
+}
 
 export async function startPomodoroLoop(userId, client) {
   // Clear any existing timer for this user first
@@ -163,73 +225,19 @@ async function handlePhaseCompletion(userId, client) {
 
 async function remindUser(userId, phase, duration, client) {
   try {
-    // Get the session to find the original channel
     const session = await Session.findOne({ userId, isActive: true });
     if (!session || !session.channelId) {
       console.log(`❌ No session or channel found for user ${userId}`);
       return;
     }
 
-    console.log(`🔍 Debug: Session channelId: ${session.channelId}`);
-
-    // Find the guild that contains the channel
-    let targetGuild = null;
-    let originalChannel = null;
-
-    for (const [, guild] of client.guilds.cache) {
-      // Check if this guild has the channel in its cache
-      const channel = guild.channels.cache.get(session.channelId);
-      if (channel) {
-        targetGuild = guild;
-        originalChannel = channel;
-        console.log(`🔍 Debug: Found channel in guild: ${guild.name}`);
-        break;
-      }
-    }
-
-    // If not found in cache, try to fetch from each guild until we find it
-    if (!targetGuild) {
-      for (const [, guild] of client.guilds.cache) {
-        try {
-          const channel = await guild.channels.fetch(session.channelId);
-          if (channel) {
-            targetGuild = guild;
-            originalChannel = channel;
-            console.log(`🔍 Debug: Fetched channel from guild: ${guild.name}`);
-            break;
-          }
-        } catch (error) {
-          // Channel doesn't belong to this guild, continue to next guild
-          continue;
-        }
-      }
-    }
-
-    if (!targetGuild) {
-      console.log(`❌ Could not find guild containing channel ${session.channelId}`);
+    const { guild, channel } = await resolveNotificationChannel(session, client);
+    if (!guild || !channel) {
+      console.log(`❌ Could not resolve a notification channel for user ${userId}`);
       return;
     }
-
-    // Check if user is in this guild
-    const member = await targetGuild.members.fetch(userId).catch(() => null);
-    if (!member) {
-      console.log(`❌ User ${userId} not found in guild ${targetGuild.name}`);
-      return;
-    }
-
-    console.log(`🔍 Debug: Original channel found: ${originalChannel ? originalChannel.name : 'NOT FOUND'}`);
-    
-    // Fallback to voice channel if original channel is not accessible
-    const voiceChannel = member.voice?.channel;
-    console.log(`🔍 Debug: Voice channel: ${voiceChannel ? voiceChannel.name : 'NOT FOUND'}`);
-    
-    // Final fallback to system channel
-    const fallbackChannel = targetGuild.systemChannel || 
-      targetGuild.channels.cache.find((ch) => ch.isTextBased() && ch.viewable);
-    console.log(`🔍 Debug: Fallback channel: ${fallbackChannel ? fallbackChannel.name : 'NOT FOUND'}`);
 
     const { embed, components } = await getSessionEmbed(userId);
-    
     if (!embed) {
       console.log(`❌ No embed generated for user ${userId}`);
       return;
@@ -243,55 +251,8 @@ async function remindUser(userId, phase, duration, client) {
 
     const message = `⏰ <@${userId}> ${phaseMessages[phase] || 'New phase started!'}`;
 
-    let messageSent = false;
-
-    // Try original channel first
-    if (originalChannel && originalChannel.isTextBased()) {
-      console.log(`🔍 Debug: Checking permissions for original channel: ${originalChannel.name}`);
-      const botPermissions = originalChannel.permissionsFor(targetGuild.members.me);
-      console.log(`🔍 Debug: Bot permissions: SendMessages=${botPermissions?.has('SendMessages')}, ViewChannel=${botPermissions?.has('ViewChannel')}`);
-      
-      if (botPermissions?.has(['SendMessages', 'ViewChannel'])) {
-        try {
-          await originalChannel.send({ content: message, embeds: [embed], components });
-          messageSent = true;
-          console.log(`📣 Sent ${phase} reminder to original channel: ${originalChannel.name} in ${targetGuild.name}`);
-        } catch (error) {
-          console.log(`❌ Failed to send to original channel: ${error.message}`);
-        }
-      } else {
-        console.log(`❌ Bot lacks permissions in original channel: ${originalChannel.name}`);
-      }
-    } else if (originalChannel) {
-      console.log(`❌ Original channel ${originalChannel.name} is not text-based: ${originalChannel.type}`);
-    }
-
-    // Fallback to voice channel if original channel failed
-    if (!messageSent && voiceChannel?.isTextBased() && voiceChannel?.permissionsFor(targetGuild.members.me)?.has(['SendMessages', 'ViewChannel'])) {
-      try {
-        await voiceChannel.send({ content: message, embeds: [embed], components });
-        messageSent = true;
-        console.log(`📣 Sent ${phase} reminder to voice channel: ${voiceChannel.name}`);
-      } catch (error) {
-        console.log(`❌ Failed to send to voice channel: ${error.message}`);
-      }
-    }
-
-    // Final fallback
-    if (!messageSent && fallbackChannel?.permissionsFor(targetGuild.members.me)?.has(['SendMessages', 'ViewChannel'])) {
-      try {
-        await fallbackChannel.send({ content: message, embeds: [embed], components });
-        messageSent = true;
-        console.log(`📣 Sent ${phase} reminder to fallback channel: ${fallbackChannel.name} in ${targetGuild.name}`);
-      } catch (error) {
-        console.log(`❌ Failed to send to fallback channel: ${error.message}`);
-      }
-    }
-
-    if (!messageSent) {
-      console.log(`❌ Failed to send message to any channel for user ${userId} in guild ${targetGuild.name}`);
-    }
-
+    await channel.send({ content: message, embeds: [embed], components });
+    console.log(`📣 Sent ${phase} reminder to #${channel.name} in ${guild.name}`);
   } catch (err) {
     console.error("❌ Reminder error:", err);
   }
@@ -301,7 +262,7 @@ async function endPomodoroSession(userId, client) {
   try {
     // Get the session to find the original channel
     const session = await Session.findOne({ userId, isActive: true });
-    
+
     // Update session to inactive
     await Session.updateOne({ userId }, { isActive: false });
 
@@ -319,48 +280,11 @@ async function endPomodoroSession(userId, client) {
       return;
     }
 
-    // Find the guild that contains the channel
-    let targetGuild = null;
-    let originalChannel = null;
-
-    for (const [, guild] of client.guilds.cache) {
-      const channel = guild.channels.cache.get(session.channelId);
-      if (channel) {
-        targetGuild = guild;
-        originalChannel = channel;
-        break;
-      }
-    }
-
-    if (!targetGuild) {
-      for (const [, guild] of client.guilds.cache) {
-        try {
-          const channel = await guild.channels.fetch(session.channelId);
-          if (channel) {
-            targetGuild = guild;
-            originalChannel = channel;
-            break;
-          }
-        } catch (error) {
-          continue;
-        }
-      }
-    }
-
-    if (!targetGuild) {
-      console.log(`❌ Could not find guild for completion message`);
+    const { guild: targetGuild, channel: channelToUse } = await resolveNotificationChannel(session, client);
+    if (!targetGuild || !channelToUse) {
+      console.log(`❌ Could not resolve a notification channel for completion message`);
       return;
     }
-
-    const member = await targetGuild.members.fetch(userId).catch(() => null);
-    if (!member) {
-      console.log(`❌ User not found in target guild for completion message`);
-      return;
-    }
-
-    const voiceChannel = member.voice?.channel;
-    const fallbackChannel = targetGuild.systemChannel || 
-      targetGuild.channels.cache.find((ch) => ch.isTextBased() && ch.viewable);
 
     const userMention = `<@${userId}>`;
     const message = `🏁 ${userMention} **Congratulations!** 🎉\n\nYour Pomodoro session is complete! You've successfully finished all your study sessions. Great job today! 💪✨`;
@@ -387,15 +311,8 @@ async function endPomodoroSession(userId, client) {
       timestamp: new Date().toISOString()
     };
 
-    // Try original channel first, then voice channel, then fallback
-    const channelToUse = (originalChannel?.isTextBased() ? originalChannel : null) || 
-                        (voiceChannel?.isTextBased() ? voiceChannel : null) || 
-                        fallbackChannel;
-    
-    if (channelToUse?.permissionsFor(targetGuild.members.me)?.has(['SendMessages', 'ViewChannel'])) {
-      await channelToUse.send({ content: message, embeds: [completionEmbed] }).catch(() => {});
-      console.log(`🏁 Sent completion message to channel: ${channelToUse.name} in ${targetGuild.name}`);
-    }
+    await channelToUse.send({ content: message, embeds: [completionEmbed] }).catch(() => {});
+    console.log(`🏁 Sent completion message to channel: ${channelToUse.name} in ${targetGuild.name}`);
 
     console.log(`🏁 Pomodoro session completed successfully for user ${userId}`);
   } catch (err) {

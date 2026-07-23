@@ -44,3 +44,11 @@ export const DEEP_FOCUS_STRIPPABLE_ROLE_IDS = [
   "992491245383467209",
   "961293321093927003",
 ];
+
+// Pomodoro notification fallback. Study voice channels here are often
+// temporary and get deleted once a user leaves them, which used to strand
+// solo/group session messages with nowhere to go. This is the last resort,
+// used only when a user isn't in any voice channel AND their original
+// session channel can no longer be resolved. Leave null to skip this tier
+// and fall through to the guild's system channel instead.
+export const POMODORO_FALLBACK_CHANNEL_ID = "1215764685236863118";
