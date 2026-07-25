@@ -65,6 +65,7 @@ import {
 } from "./services/serverPulse/manager.js";
 import { rehydrateFromGuild } from "./services/serverPulse/voiceHours.js";
 import { handleDeepFocusButton } from "./handlers/deepFocus/buttonHandler.js";
+import { handleDeepFocusChannelSelect } from "./handlers/deepFocus/channelPrompt.js";
 import {
   startDeepFocusSweep,
   closeSessionForDepartedMember,
@@ -251,6 +252,13 @@ client.on("interactionCreate", async (interaction) => {
         return handleStopSession(interaction);
       case "skip_phase":
         return handleSkip(interaction);
+    }
+    return;
+  }
+
+  if (interaction.isChannelSelectMenu()) {
+    if (interaction.customId === 'deepfocus_channel_select') {
+      return await handleDeepFocusChannelSelect(interaction, client);
     }
     return;
   }
