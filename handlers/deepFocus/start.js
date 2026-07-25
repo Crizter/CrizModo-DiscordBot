@@ -4,7 +4,9 @@ import { enterDeepFocus, DEFAULT_DURATION_HOURS } from "../../services/deepFocus
 // 3s interaction window — defer first, and catch internally: bot.js's generic
 // error path calls bare interaction.reply, which throws after a defer.
 // showTag: true/false = explicit choice; null = user's stored preference.
-export async function handleDeepFocusStart(interaction, client, durationHours = DEFAULT_DURATION_HOURS, showTag = null) {
+// channelId: explicit /deepfocus start channel option; null = fall back to
+// the member's current voice channel (covers button entry too).
+export async function handleDeepFocusStart(interaction, client, durationHours = DEFAULT_DURATION_HOURS, showTag = null, channelId = null) {
   try {
     await interaction.deferReply({ flags: 64 });
 
@@ -13,6 +15,7 @@ export async function handleDeepFocusStart(interaction, client, durationHours = 
       client,
       durationHours,
       showTag,
+      channelId,
     });
 
     if (!result.ok) {
@@ -25,7 +28,8 @@ export async function handleDeepFocusStart(interaction, client, durationHours = 
         `🧘 **Deep Focus on.** Distracting channels are hidden.\n` +
         `Stripped **${result.strippedCount}** access role(s) — they'll be restored automatically <t:${expiresUnix}:R> ` +
         `(<t:${expiresUnix}:t>), or use \`/deepfocus exit\` / the exit button anytime.` +
-        (result.tagApplied ? `\nYour name now carries the 🧘 tag — it reverts when you exit.` : ""),
+        (result.tagApplied ? `\nYour name now carries the 🧘 tag — it reverts when you exit.` : "") +
+        (result.allowedChannelId ? `\n<#${result.allowedChannelId}> stays visible & joinable until you exit.` : ""),
     });
   } catch (error) {
     console.error("❌ Error starting Deep Focus:", error);

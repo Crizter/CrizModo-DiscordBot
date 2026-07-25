@@ -36,6 +36,8 @@ export async function handleDeepFocusPostMessage(interaction) {
           `Press **Name Tag** below to turn it on/off for your entries.`,
         "",
         `Want a shorter timer? Use \`/deepfocus start hours:<1-${MAX_DURATION_HOURS}>\`.`,
+        `Need one voice channel to stay open (a cam or temp channel)? Use \`/deepfocus start channel:<#channel>\` — ` +
+          `defaults to whatever voice channel you're already in if you don't pick one.`,
       ].join("\n")
     )
     .setColor(0x5865f2);

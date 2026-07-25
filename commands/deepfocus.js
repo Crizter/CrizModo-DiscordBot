@@ -1,4 +1,4 @@
-import { SlashCommandBuilder } from "discord.js";
+import { SlashCommandBuilder, ChannelType } from "discord.js";
 import { handleDeepFocusStart } from "../handlers/deepFocus/start.js";
 import { handleDeepFocusExit } from "../handlers/deepFocus/exit.js";
 import { handleDeepFocusStatus } from "../handlers/deepFocus/status.js";
@@ -26,6 +26,12 @@ export const data = new SlashCommandBuilder()
                     .setDescription("Show a 🧘 tag in your name while focusing (default: yes)")
                     .setRequired(false)
             )
+            .addChannelOption(option =>
+                option.setName("channel")
+                    .setDescription("Keep this one voice channel visible & joinable (default: your current voice channel, if any)")
+                    .addChannelTypes(ChannelType.GuildVoice, ChannelType.GuildStageVoice)
+                    .setRequired(false)
+            )
     )
     .addSubcommand(subcommand =>
         subcommand
@@ -51,7 +57,8 @@ export async function execute(interaction, client) {
             // null when omitted → the user's stored preference decides;
             // explicit true/false also becomes their sticky preference.
             const showTag = interaction.options.getBoolean("show-tag");
-            await handleDeepFocusStart(interaction, client, hours, showTag);
+            const channelOption = interaction.options.getChannel("channel");
+            await handleDeepFocusStart(interaction, client, hours, showTag, channelOption?.id ?? null);
             break;
         }
         case "exit":

@@ -16,7 +16,8 @@ export async function handleDeepFocusStatus(interaction) {
       content:
         `🧘 **Deep Focus is on.**\n` +
         `Auto-exit <t:${expiresUnix}:R> (<t:${expiresUnix}:f>).\n` +
-        `**${session.savedRoleIds.length}** role(s) will be restored on exit.`,
+        `**${session.savedRoleIds.length}** role(s) will be restored on exit.` +
+        (session.allowedChannelId ? `\n<#${session.allowedChannelId}> stays visible & joinable until you exit.` : ""),
       flags: 64,
     });
   } catch (error) {
