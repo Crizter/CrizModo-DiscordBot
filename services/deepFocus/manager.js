@@ -278,8 +278,19 @@ export async function enterDeepFocus({ member, client, durationHours = DEFAULT_D
   // 2b. Resolve the allowed-channel exception now, while permissions still
   // reflect the member's real un-stripped roles — validation only, no
   // mutation yet (applied at step 6b, after the role strip below).
+  // channelExceptionSkipReason surfaces in the reply text (see
+  // buildEnterResultMessage) so a rejected/failed exception is visible from
+  // Discord itself instead of only in the server console.
   const targetChannel = channelId ? guild.channels.cache.get(channelId) : member.voice.channel;
-  const channelException = resolveChannelException(targetChannel, member);
+  let channelExceptionSkipReason = null;
+  if (channelId && !targetChannel) {
+    channelExceptionSkipReason = "channel_not_found";
+  }
+  const channelException = targetChannel ? resolveChannelException(targetChannel, member) : null;
+  if (targetChannel && !channelException) {
+    channelExceptionSkipReason = "no_access";
+    console.log(`⚠️ Deep Focus: ${member.user.tag} picked <#${targetChannel.id}> but currently lacks View/Connect there — exception skipped`);
+  }
 
   // 3. Log message first — the DB-loss backup exists before anything changes.
   let logMessage;
@@ -383,8 +394,10 @@ export async function enterDeepFocus({ member, client, durationHours = DEFAULT_D
         reason: "Deep Focus entry — allowed channel exception",
       });
       allowedChannelId = targetChannel.id;
+      console.log(`📵 Deep Focus: allowed-channel exception set for ${member.user.tag} on <#${targetChannel.id}> —`, channelException);
     } catch (error) {
       console.error(`❌ Deep Focus: couldn't set channel exception for ${member.id} on ${targetChannel.id}:`, error.message);
+      channelExceptionSkipReason = "overwrite_failed";
     }
   }
   session.allowedChannelId = allowedChannelId;
@@ -395,7 +408,7 @@ export async function enterDeepFocus({ member, client, durationHours = DEFAULT_D
 
   lastStateChange.set(cooldownKey, Date.now());
   console.log(`📵 ${member.user.tag} entered Deep Focus for ${hours}h (${savedRoleIds.length} roles stripped)`);
-  return { ok: true, session, strippedCount: savedRoleIds.length, expiresAt, tagApplied, allowedChannelId };
+  return { ok: true, session, strippedCount: savedRoleIds.length, expiresAt, tagApplied, allowedChannelId, channelExceptionSkipReason };
 }
 
 // Idempotent — safe to run repeatedly on the same session (the sweep retries
