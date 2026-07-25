@@ -89,7 +89,7 @@ async function postSnapshotLog(client, member, { savedRoleIds, allRoleIds, expir
   const allLines = allRoleIds.length ? allRoleIds.map((id) => `\`${id}\``) : ["*(none)*"];
 
   const embed = new EmbedBuilder()
-    .setTitle(`🧘 Deep Focus snapshot — ${member.user.tag}`)
+    .setTitle(`📵 Deep Focus snapshot — ${member.user.tag}`)
     .setDescription(
       [
         `**User:** <@${member.id}> \`${member.id}\``,
@@ -270,7 +270,7 @@ export async function enterDeepFocus({ member, client, durationHours = DEFAULT_D
     return { ok: false, error: "Couldn't assign the Deep Focus role. Nothing else was changed." };
   }
 
-  // 5b. Optional visible tag: prefix the display name with 🧘. Purely
+  // 5b. Optional visible tag: prefix the display name with 📵. Purely
   // cosmetic — never fails entry. The server owner and members above the bot
   // can't be renamed (member.manageable false) — skipped silently. Intent is
   // persisted BEFORE the rename so a crash between the two is covered by
@@ -290,7 +290,7 @@ export async function enterDeepFocus({ member, client, durationHours = DEFAULT_D
     member.manageable &&
     botMember.permissions.has(PermissionFlagsBits.ManageNicknames)
   ) {
-    const tagged = `🧘 ${member.displayName}`.slice(0, 32);
+    const tagged = `📵 ${member.displayName}`.slice(0, 32);
     session.appliedNickname = tagged;
     await session.save();
     try {
@@ -319,7 +319,7 @@ export async function enterDeepFocus({ member, client, durationHours = DEFAULT_D
   await session.save();
 
   lastStateChange.set(cooldownKey, Date.now());
-  console.log(`🧘 ${member.user.tag} entered Deep Focus for ${hours}h (${savedRoleIds.length} roles stripped)`);
+  console.log(`📵 ${member.user.tag} entered Deep Focus for ${hours}h (${savedRoleIds.length} roles stripped)`);
   return { ok: true, session, strippedCount: savedRoleIds.length, expiresAt, tagApplied };
 }
 
@@ -341,7 +341,7 @@ export async function restoreSession(session, client, { reason = "Deep Focus end
     // User left (or the GuildMemberRemove event was missed while the bot was
     // down) — keep the saved roles for staff, stop trying.
     await markClosed(session, "member_left");
-    console.log(`🧘 Deep Focus: ${session.userId} no longer in guild — session closed as member_left`);
+    console.log(`📵 Deep Focus: ${session.userId} no longer in guild — session closed as member_left`);
     return { ok: true };
   }
 
@@ -391,7 +391,7 @@ export async function restoreSession(session, client, { reason = "Deep Focus end
 
   if (failures === 0) {
     await markClosed(session, "restored");
-    console.log(`🧘 Deep Focus: restored ${session.savedRoleIds.length} roles for ${member.user.tag}`);
+    console.log(`📵 Deep Focus: restored ${session.savedRoleIds.length} roles for ${member.user.tag}`);
     return { ok: true };
   }
 
@@ -436,7 +436,7 @@ export async function closeSessionForDepartedMember(guildId, userId) {
   const session = await getOpenSession(guildId, userId);
   if (!session) return;
   await markClosed(session, "member_left");
-  console.log(`🧘 Deep Focus: ${userId} left the guild mid-focus — session closed, roles kept in DB`);
+  console.log(`📵 Deep Focus: ${userId} left the guild mid-focus — session closed, roles kept in DB`);
 }
 
 // Restart-proof by construction: expiry lives in the DB, not in memory.
@@ -468,7 +468,7 @@ export function startDeepFocusSweep(client) {
         updatedAt: { $lte: new Date(now.getTime() - STALE_ENTERING_MS) },
       });
       for (const session of stale) {
-        console.log(`🧘 Deep Focus: recovering crashed entry for ${session.userId}`);
+        console.log(`📵 Deep Focus: recovering crashed entry for ${session.userId}`);
         await restoreSession(session, client, { reason: "Deep Focus entry recovery" });
       }
 

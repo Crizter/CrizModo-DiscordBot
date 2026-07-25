@@ -22,10 +22,10 @@ export async function handleDeepFocusStart(interaction, client, durationHours = 
     const expiresUnix = Math.floor(result.expiresAt.getTime() / 1000);
     await interaction.editReply({
       content:
-        `🧘 **Deep Focus on.** Distracting channels are hidden.\n` +
+        `📵 **Deep Focus on.** Distracting channels are hidden.\n` +
         `Stripped **${result.strippedCount}** access role(s) — they'll be restored automatically <t:${expiresUnix}:R> ` +
         `(<t:${expiresUnix}:t>), or use \`/deepfocus exit\` / the exit button anytime.` +
-        (result.tagApplied ? `\nYour name now carries the 🧘 tag — it reverts when you exit.` : ""),
+        (result.tagApplied ? `\nYour name now carries the 📵 tag — it reverts when you exit.` : ""),
     });
   } catch (error) {
     console.error("❌ Error starting Deep Focus:", error);

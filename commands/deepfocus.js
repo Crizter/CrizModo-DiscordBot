@@ -23,7 +23,7 @@ export const data = new SlashCommandBuilder()
             )
             .addBooleanOption(option =>
                 option.setName("show-tag")
-                    .setDescription("Show a 🧘 tag in your name while focusing (default: yes)")
+                    .setDescription("Show a 📵 tag in your name while focusing (default: yes)")
                     .setRequired(false)
             )
     )

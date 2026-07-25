@@ -54,7 +54,7 @@ Why it sticks: shared-goal FOMO creates herd behavior — nobody wants to be the
 One-time admin setup required in Discord (the bot never touches channel overwrites):
 1. On every category to hide during focus: add the Deep Focus role (989664630500626434) with ViewChannel = DENY.
 2. On the exempt channels (deep-focus channel, server-info/complaints): add the Deep Focus role with ViewChannel = ALLOW.
-3. Keep the Deep Focus role BELOW the bot's highest role, and keep the bot's Manage Roles + Manage Nicknames permissions (nicknames power the optional 🧘 focus tag; the owner and above-bot members are skipped automatically).
+3. Keep the Deep Focus role BELOW the bot's highest role, and keep the bot's Manage Roles + Manage Nicknames permissions (nicknames power the optional 📵 focus tag; the owner and above-bot members are skipped automatically).
 4. The role-snapshot log channel (1529614165306507304) should be staff-only visible.
 
 14. Ambient Pulse Echoes (honesty tradeoff — read before building)
