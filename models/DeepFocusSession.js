@@ -35,7 +35,7 @@ const deepFocusSessionSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
-    // The "🧘 ..." nickname the bot actually applied (null = tag was opted
+    // The "📵 ..." nickname the bot actually applied (null = tag was opted
     // out, skipped, or failed). Restore only touches the nickname when the
     // member's current nickname still equals this — so a manual mid-focus
     // rename is never clobbered.

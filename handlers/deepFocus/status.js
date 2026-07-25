@@ -14,7 +14,7 @@ export async function handleDeepFocusStatus(interaction) {
     const expiresUnix = Math.floor(session.expiresAt.getTime() / 1000);
     await interaction.reply({
       content:
-        `🧘 **Deep Focus is on.**\n` +
+        `📵 **Deep Focus is on.**\n` +
         `Auto-exit <t:${expiresUnix}:R> (<t:${expiresUnix}:f>).\n` +
         `**${session.savedRoleIds.length}** role(s) will be restored on exit.` +
         (session.allowedChannelId ? `\n<#${session.allowedChannelId}> stays visible & joinable until you exit.` : ""),

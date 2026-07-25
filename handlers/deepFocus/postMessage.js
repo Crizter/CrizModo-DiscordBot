@@ -19,7 +19,7 @@ export async function handleDeepFocusPostMessage(interaction) {
   }
 
   const embed = new EmbedBuilder()
-    .setTitle("🧘 Deep Focus Mode")
+    .setTitle("📵 Deep Focus Mode")
     .setDescription(
       [
         "Hide every distracting channel and study in peace.",
@@ -32,7 +32,7 @@ export async function handleDeepFocusPostMessage(interaction) {
         `**Exiting:** press **Exit Deep Focus** below or run \`/deepfocus exit\` anytime. ` +
           `Your roles are restored automatically after **${MAX_DURATION_HOURS}h** at the latest.`,
         "",
-        `**🧘 Name tag:** while focusing, a 🧘 appears in your name (your exact name comes back on exit). ` +
+        `**📵 Name tag:** while focusing, a 📵 appears in your name (your exact name comes back on exit). ` +
           `Press **Name Tag** below to turn it on/off for your entries.`,
         "",
         `Want a shorter timer? Use \`/deepfocus start hours:<1-${MAX_DURATION_HOURS}>\`.`,
@@ -53,7 +53,7 @@ export async function handleDeepFocusPostMessage(interaction) {
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId("deepfocus_toggletag")
-      .setLabel("🧘 Name Tag")
+      .setLabel("📵 Name Tag")
       .setStyle(ButtonStyle.Secondary)
   );
 

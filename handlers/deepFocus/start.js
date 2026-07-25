@@ -9,12 +9,30 @@ export function buildEnterResultMessage(result) {
 
   const expiresUnix = Math.floor(result.expiresAt.getTime() / 1000);
   return (
-    `🧘 **Deep Focus on.** Distracting channels are hidden.\n` +
+    `📵 **Deep Focus on.** Distracting channels are hidden.\n` +
     `Stripped **${result.strippedCount}** access role(s) — they'll be restored automatically <t:${expiresUnix}:R> ` +
     `(<t:${expiresUnix}:t>), or use \`/deepfocus exit\` / the exit button anytime.` +
-    (result.tagApplied ? `\nYour name now carries the 🧘 tag — it reverts when you exit.` : "") +
-    (result.allowedChannelId ? `\n<#${result.allowedChannelId}> stays visible & joinable until you exit.` : "")
+    (result.tagApplied ? `\nYour name now carries the 📵 tag — it reverts when you exit.` : "") +
+    (result.allowedChannelId ? `\n<#${result.allowedChannelId}> stays visible & joinable until you exit.` : "") +
+    (buildChannelExceptionWarning(result))
   );
+}
+
+// Surfaces WHY the allowed-channel exception wasn't applied, straight from
+// Discord — otherwise a rejected/failed exception is silently invisible to
+// the user (only logged server-side), making it impossible to self-diagnose.
+function buildChannelExceptionWarning(result) {
+  if (result.allowedChannelId || !result.channelExceptionSkipReason) return "";
+  switch (result.channelExceptionSkipReason) {
+    case "no_access":
+      return `\n⚠️ Couldn't keep that channel visible — you don't currently have View/Connect access to it yourself (check the role that's supposed to grant it).`;
+    case "overwrite_failed":
+      return `\n⚠️ Couldn't keep that channel visible — the bot may be missing **Manage Roles** permission there, or lacks the permissions it was trying to grant you. Check the server logs.`;
+    case "channel_not_found":
+      return `\n⚠️ Couldn't find that channel to keep it visible.`;
+    default:
+      return "";
+  }
 }
 
 // Entry does several API round-trips (log post + role ops) and will blow the
