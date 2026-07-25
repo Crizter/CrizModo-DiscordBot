@@ -103,21 +103,43 @@ function chunkedFields(name, lines) {
 // Never trust a channel id at face value — only ever preserve access the
 // member ALREADY has, never grant anything new. Must be called BEFORE any
 // Deep Focus mutation (role add/strip), while permissionsFor() still
-// reflects the member's real, un-stripped roles. Returns null if the member
-// doesn't currently have ViewChannel (+Connect for voice channels) — this is
-// what stops someone from naming another user's private temp/cam channel
-// they were never let into.
-function resolveChannelException(channel, member) {
-  if (!channel || typeof channel.permissionsFor !== "function") return null;
+// reflects the member's real, un-stripped roles. Returns { overwrite: null,
+// reason } if the member doesn't currently have ViewChannel (+Connect for
+// voice channels) — this is what stops someone from naming another user's
+// private temp/cam channel they were never let into.
+//
+// Also intersects with the BOT's own permissions on the channel: Discord's
+// permission-overwrite API rejects the whole edit if it grants a bit the
+// acting bot doesn't itself hold there (unless the bot has Administrator) —
+// exactly the case for a channel locked to one role (e.g. Cam Only) that the
+// bot's own role was never given access to. Filtering down to what the bot
+// can actually grant lets this degrade gracefully instead of failing
+// all-or-nothing; if that leaves ViewChannel (or Connect, for voice) missing,
+// there's nothing useful left to grant — reason "bot_lacks_access" means an
+// admin needs to give the bot's role access to that channel/category.
+function resolveChannelException(channel, member, botMember) {
+  if (!channel || typeof channel.permissionsFor !== "function") {
+    return { overwrite: null, reason: "channel_not_found" };
+  }
   const perms = channel.permissionsFor(member);
-  if (!perms || !perms.has(PermissionFlagsBits.ViewChannel)) return null;
-  if (channel.isVoiceBased?.() && !perms.has(PermissionFlagsBits.Connect)) return null;
+  if (!perms || !perms.has(PermissionFlagsBits.ViewChannel)) {
+    return { overwrite: null, reason: "no_access" };
+  }
+  if (channel.isVoiceBased?.() && !perms.has(PermissionFlagsBits.Connect)) {
+    return { overwrite: null, reason: "no_access" };
+  }
 
+  const botPerms = channel.permissionsFor(botMember);
   const overwrite = {};
   for (const flagName of CHANNEL_OVERWRITE_SAFE_FLAGS) {
-    if (perms.has(PermissionFlagsBits[flagName])) overwrite[flagName] = true;
+    if (perms.has(PermissionFlagsBits[flagName]) && botPerms?.has(PermissionFlagsBits[flagName])) {
+      overwrite[flagName] = true;
+    }
   }
-  return overwrite;
+  if (!overwrite.ViewChannel || (channel.isVoiceBased?.() && !overwrite.Connect)) {
+    return { overwrite: null, reason: "bot_lacks_access" };
+  }
+  return { overwrite, reason: null };
 }
 
 // Posted BEFORE any mutation — this message is the manual recovery backup if
@@ -283,13 +305,16 @@ export async function enterDeepFocus({ member, client, durationHours = DEFAULT_D
   // Discord itself instead of only in the server console.
   const targetChannel = channelId ? guild.channels.cache.get(channelId) : member.voice.channel;
   let channelExceptionSkipReason = null;
+  let channelException = null;
   if (channelId && !targetChannel) {
     channelExceptionSkipReason = "channel_not_found";
-  }
-  const channelException = targetChannel ? resolveChannelException(targetChannel, member) : null;
-  if (targetChannel && !channelException) {
-    channelExceptionSkipReason = "no_access";
-    console.log(`⚠️ Deep Focus: ${member.user.tag} picked <#${targetChannel.id}> but currently lacks View/Connect there — exception skipped`);
+  } else if (targetChannel) {
+    const resolved = resolveChannelException(targetChannel, member, botMember);
+    channelException = resolved.overwrite;
+    channelExceptionSkipReason = resolved.reason;
+    if (channelExceptionSkipReason) {
+      console.log(`⚠️ Deep Focus: ${member.user.tag} picked <#${targetChannel.id}> but exception skipped (${channelExceptionSkipReason})`);
+    }
   }
 
   // 3. Log message first — the DB-loss backup exists before anything changes.
