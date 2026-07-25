@@ -14,6 +14,30 @@ const MAX_RESTORE_ATTEMPTS = 5;
 export const MAX_DURATION_HOURS = 24;
 export const DEFAULT_DURATION_HOURS = 24;
 
+// Fixed allowlist for the "allowed channel" exception overwrite — a channel
+// the user picks (or their current voice channel) to stay visible/joinable
+// despite the category-level Deep Focus deny. Deliberately NOT "whatever
+// perms they currently have": copying only these flags, and only the ones
+// the member already holds, means the overwrite can never grant anything new
+// or leak a moderation-ish permission even if the member happens to have one
+// via some other role. See resolveChannelException.
+const CHANNEL_OVERWRITE_SAFE_FLAGS = [
+  "ViewChannel",
+  "Connect",
+  "Speak",
+  "Stream",
+  "UseVAD",
+  "RequestToSpeak",
+  "SendMessages",
+  "ReadMessageHistory",
+  "AddReactions",
+  "EmbedLinks",
+  "AttachFiles",
+  "UseApplicationCommands",
+  "UseExternalEmojis",
+  "UseExternalStickers",
+];
+
 let sweepInterval = null;
 
 // Rate limiting (in-memory — resets on restart, which is fine for abuse
@@ -76,10 +100,30 @@ function chunkedFields(name, lines) {
   return fields;
 }
 
+// Never trust a channel id at face value — only ever preserve access the
+// member ALREADY has, never grant anything new. Must be called BEFORE any
+// Deep Focus mutation (role add/strip), while permissionsFor() still
+// reflects the member's real, un-stripped roles. Returns null if the member
+// doesn't currently have ViewChannel (+Connect for voice channels) — this is
+// what stops someone from naming another user's private temp/cam channel
+// they were never let into.
+function resolveChannelException(channel, member) {
+  if (!channel || typeof channel.permissionsFor !== "function") return null;
+  const perms = channel.permissionsFor(member);
+  if (!perms || !perms.has(PermissionFlagsBits.ViewChannel)) return null;
+  if (channel.isVoiceBased?.() && !perms.has(PermissionFlagsBits.Connect)) return null;
+
+  const overwrite = {};
+  for (const flagName of CHANNEL_OVERWRITE_SAFE_FLAGS) {
+    if (perms.has(PermissionFlagsBits[flagName])) overwrite[flagName] = true;
+  }
+  return overwrite;
+}
+
 // Posted BEFORE any mutation — this message is the manual recovery backup if
 // the DB doc is ever lost. Raw IDs are the real payload: role mentions render
 // blank once a role is deleted. Throws on failure so entry aborts cleanly.
-async function postSnapshotLog(client, member, { savedRoleIds, allRoleIds, expiresAt, durationHours, savedNickname }) {
+async function postSnapshotLog(client, member, { savedRoleIds, allRoleIds, expiresAt, durationHours, savedNickname, targetChannel }) {
   const channel = await client.channels.fetch(DEEP_FOCUS_LOG_CHANNEL_ID);
   if (!channel) throw new Error("Deep Focus log channel not found");
 
@@ -96,6 +140,7 @@ async function postSnapshotLog(client, member, { savedRoleIds, allRoleIds, expir
         `**Entered:** <t:${unixSeconds(new Date())}:F>`,
         `**Expires:** <t:${unixSeconds(expiresAt)}:F> (${durationHours}h)`,
         `**Nickname at entry:** ${savedNickname ? `\`${savedNickname}\`` : "*(none — global display name)*"}`,
+        `**Allowed channel exception:** ${targetChannel ? `<#${targetChannel.id}> \`${targetChannel.id}\`` : "*(none)*"}`,
       ].join("\n")
     )
     .addFields(
@@ -124,7 +169,10 @@ async function postRestoreFailureAlert(client, session) {
         [
           `Could not restore roles for <@${session.userId}> \`${session.userId}\` after ${session.restoreAttempts} attempts.`,
           `Re-add the roles below manually and remove the Deep Focus role.`,
-        ].join("\n")
+          session.allowedChannelId
+            ? `Also manually clear the member permission overwrite on <#${session.allowedChannelId}> \`${session.allowedChannelId}\` (Deep Focus allowed-channel exception).`
+            : "",
+        ].filter(Boolean).join("\n")
       )
       .addFields(...chunkedFields("Roles to restore (raw IDs)", roleLines))
       .setColor(0xf23f43)
@@ -174,7 +222,10 @@ export async function toggleShowTagPreference(guildId, userId) {
 // paths ('entering' docs older than 5 min get rolled back/forward).
 // showTag: true/false = explicit choice (persisted as the user's preference);
 // null/undefined = resolve from the stored preference (button entry).
-export async function enterDeepFocus({ member, client, durationHours = DEFAULT_DURATION_HOURS, showTag = null }) {
+// channelId: explicit channel picked via the /deepfocus start option; null =
+// fall back to the member's current voice channel, if any (covers button
+// entry, which can't carry command options).
+export async function enterDeepFocus({ member, client, durationHours = DEFAULT_DURATION_HOURS, showTag = null, channelId = null }) {
   if (!DEEP_FOCUS_ENABLED) {
     return { ok: false, error: "Deep Focus is currently disabled." };
   }
@@ -224,6 +275,12 @@ export async function enterDeepFocus({ member, client, durationHours = DEFAULT_D
   const expiresAt = new Date(Date.now() + hours * 3_600_000);
   const savedNickname = member.nickname; // null = using global display name
 
+  // 2b. Resolve the allowed-channel exception now, while permissions still
+  // reflect the member's real un-stripped roles — validation only, no
+  // mutation yet (applied at step 6b, after the role strip below).
+  const targetChannel = channelId ? guild.channels.cache.get(channelId) : member.voice.channel;
+  const channelException = resolveChannelException(targetChannel, member);
+
   // 3. Log message first — the DB-loss backup exists before anything changes.
   let logMessage;
   try {
@@ -233,6 +290,7 @@ export async function enterDeepFocus({ member, client, durationHours = DEFAULT_D
       expiresAt,
       durationHours: hours,
       savedNickname,
+      targetChannel: channelException ? targetChannel : null,
     });
   } catch (error) {
     console.error("❌ Deep Focus: snapshot log failed, aborting entry:", error);
@@ -314,13 +372,30 @@ export async function enterDeepFocus({ member, client, durationHours = DEFAULT_D
     }
   }
 
+  // 6b. Apply the allowed-channel exception, if one was resolved at 2b.
+  // Member-level overwrite beats the category's role-level Deep Focus deny,
+  // so this punches a hole for exactly one channel without reopening the
+  // whole category. Purely additive, best-effort — never fails entry.
+  let allowedChannelId = null;
+  if (targetChannel && channelException) {
+    try {
+      await targetChannel.permissionOverwrites.edit(member.id, channelException, {
+        reason: "Deep Focus entry — allowed channel exception",
+      });
+      allowedChannelId = targetChannel.id;
+    } catch (error) {
+      console.error(`❌ Deep Focus: couldn't set channel exception for ${member.id} on ${targetChannel.id}:`, error.message);
+    }
+  }
+  session.allowedChannelId = allowedChannelId;
+
   // 7. Session is live.
   session.status = "active";
   await session.save();
 
   lastStateChange.set(cooldownKey, Date.now());
   console.log(`📵 ${member.user.tag} entered Deep Focus for ${hours}h (${savedRoleIds.length} roles stripped)`);
-  return { ok: true, session, strippedCount: savedRoleIds.length, expiresAt, tagApplied };
+  return { ok: true, session, strippedCount: savedRoleIds.length, expiresAt, tagApplied, allowedChannelId };
 }
 
 // Idempotent — safe to run repeatedly on the same session (the sweep retries
@@ -386,6 +461,24 @@ export async function restoreSession(session, client, { reason = "Deep Focus end
       await member.setNickname(session.savedNickname ?? null, reason);
     } catch (error) {
       console.error(`❌ Deep Focus: couldn't restore nickname for ${member.id}:`, error.message);
+    }
+  }
+
+  // Channel exception cleanup — unlike the nickname, this is a real access
+  // grant (not cosmetic), so a failure here counts toward `failures` the same
+  // as a role restore: it gets retried by the sweep and eventually alerts
+  // staff via postRestoreFailureAlert rather than being silently dropped. A
+  // since-deleted channel (routine for temp/cam channels) is a safe no-op —
+  // the overwrite is already gone with the channel.
+  if (session.allowedChannelId) {
+    const exceptionChannel = guild.channels.cache.get(session.allowedChannelId);
+    if (exceptionChannel) {
+      try {
+        await exceptionChannel.permissionOverwrites.delete(member.id, reason);
+      } catch (error) {
+        console.error(`❌ Deep Focus: couldn't clear channel exception for ${member.id}:`, error.message);
+        failures += 1;
+      }
     }
   }
 

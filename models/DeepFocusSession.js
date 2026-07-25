@@ -43,6 +43,14 @@ const deepFocusSessionSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    // Channel exempted from the Deep Focus hide (member-level permission
+    // overwrite added on entry) — the one channel the user picked to stay
+    // visible/joinable, e.g. a cam or temp channel. Null = no exception.
+    // Restore deletes the overwrite on this channel id, if it still exists.
+    allowedChannelId: {
+      type: String,
+      default: null,
+    },
     status: {
       type: String,
       enum: ["entering", "active", "restored", "member_left", "failed"],

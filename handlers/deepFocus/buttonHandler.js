@@ -1,14 +1,15 @@
-import { handleDeepFocusStart } from "./start.js";
 import { handleDeepFocusExit } from "./exit.js";
 import { handleDeepFocusToggleTag } from "./toggleTag.js";
-import { DEFAULT_DURATION_HOURS } from "../../services/deepFocus/manager.js";
+import { handleDeepFocusEnterPrompt, handleDeepFocusEnterSkip } from "./channelPrompt.js";
 
 export async function handleDeepFocusButton(interaction, client) {
   switch (interaction.customId) {
     case "deepfocus_enter":
-      // Button entry: default duration, showTag null = the user's stored
-      // preference (set via the toggle button or an explicit command option).
-      return await handleDeepFocusStart(interaction, client, DEFAULT_DURATION_HOURS, null);
+      // Shows the skippable channel picker instead of entering immediately —
+      // buttons can't carry command options like /deepfocus start's channel.
+      return await handleDeepFocusEnterPrompt(interaction);
+    case "deepfocus_enter_skip":
+      return await handleDeepFocusEnterSkip(interaction, client);
     case "deepfocus_exit":
       return await handleDeepFocusExit(interaction, client);
     case "deepfocus_toggletag":
