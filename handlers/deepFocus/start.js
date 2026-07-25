@@ -26,8 +26,10 @@ function buildChannelExceptionWarning(result) {
   switch (result.channelExceptionSkipReason) {
     case "no_access":
       return `\n⚠️ Couldn't keep that channel visible — you don't currently have View/Connect access to it yourself (check the role that's supposed to grant it).`;
+    case "bot_lacks_access":
+      return `\n⚠️ Couldn't keep that channel visible — **the bot itself doesn't have View Channel/Connect access to that channel.** An admin needs to give the bot's role access there (Discord won't let a bot grant a permission it doesn't hold itself).`;
     case "overwrite_failed":
-      return `\n⚠️ Couldn't keep that channel visible — the bot may be missing **Manage Roles** permission there, or lacks the permissions it was trying to grant you. Check the server logs.`;
+      return `\n⚠️ Couldn't keep that channel visible — something went wrong applying the permission change. Check the server logs.`;
     case "channel_not_found":
       return `\n⚠️ Couldn't find that channel to keep it visible.`;
     default:
