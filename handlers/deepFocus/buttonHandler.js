@@ -1,5 +1,4 @@
 import { handleDeepFocusExit } from "./exit.js";
-import { handleDeepFocusToggleTag } from "./toggleTag.js";
 import { handleDeepFocusEnterPrompt, handleDeepFocusEnterSkip } from "./channelPrompt.js";
 
 export async function handleDeepFocusButton(interaction, client) {
@@ -12,8 +11,6 @@ export async function handleDeepFocusButton(interaction, client) {
       return await handleDeepFocusEnterSkip(interaction, client);
     case "deepfocus_exit":
       return await handleDeepFocusExit(interaction, client);
-    case "deepfocus_toggletag":
-      return await handleDeepFocusToggleTag(interaction);
     default:
       return await interaction.reply({ content: "❌ Unknown Deep Focus action.", flags: 64 });
   }

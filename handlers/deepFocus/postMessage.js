@@ -26,20 +26,16 @@ export async function handleDeepFocusPostMessage(interaction) {
       [
         "Hide every distracting channel and study in peace.",
         "",
-        "**What happens when you enter:**",
-        "- Your channel-access roles are safely saved, then removed",
-        "- You get the Deep Focus role — most categories disappear",
-        "- This channel and the server-info channels stay visible",
+        "**What happens when you click \"Enter\":**",
+        "- You choose the channel where you want to stay",
+        "- You get the Deep Focus role — all your roles are saved and then removed",
+        "- Your chosen channel stays visible, while most other channels disappear",
+        "- You get the Deep Focus icon, and you're all set and ready to go",
         "",
         `**Exiting:** press **Exit Deep Focus** below or run \`/deepfocus exit\` anytime. ` +
           `Your roles are restored automatically after **${MAX_DURATION_HOURS}h** at the latest.`,
         "",
-        `**📵 Name tag:** while focusing, a 📵 appears in your name (your exact name comes back on exit). ` +
-          `Press **Name Tag** below to turn it on/off for your entries.`,
-        "",
         `Want a shorter timer? Use \`/deepfocus start hours:<1-${MAX_DURATION_HOURS}>\`.`,
-        `**One channel can stay open** (a cam or temp channel) — pressing **Enter Deep Focus** below will ask you ` +
-          `to pick one first (skippable), or use \`/deepfocus start channel:<#channel>\` directly.`,
       ].join("\n")
     )
     .setColor(0x5865f2);
@@ -52,10 +48,6 @@ export async function handleDeepFocusPostMessage(interaction) {
     new ButtonBuilder()
       .setCustomId("deepfocus_exit")
       .setLabel("Exit Deep Focus")
-      .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId("deepfocus_toggletag")
-      .setLabel("📵 Name Tag")
       .setStyle(ButtonStyle.Secondary)
   );
 
