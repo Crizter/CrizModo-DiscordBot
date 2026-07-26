@@ -47,6 +47,11 @@ export const data = new SlashCommandBuilder()
         subcommand
             .setName("post-message")
             .setDescription("Post the Deep Focus entry/exit message in this channel (admin)")
+            .addStringOption(option =>
+                option.setName("message-id")
+                    .setDescription("Edit this existing message in this channel instead of posting a new one")
+                    .setRequired(false)
+            )
     );
 
 export async function execute(interaction, client) {
