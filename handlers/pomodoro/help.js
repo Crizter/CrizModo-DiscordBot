@@ -31,7 +31,7 @@ export async function handleHelp(interaction) {
       {
         name: "📵 Deep Focus",
         value: [
-          "`/deepfocus start [hours:1-24] [show-tag] [channel]` — Hide distracting channels; roles saved & auto-restored (default 24h, 📵 name tag on by default, channel keeps one voice channel visible)",
+          "`/deepfocus start [hours:1-24] [channel]` — Hide distracting channels; roles saved & auto-restored (default 24h, 📵 name tag always on, channel keeps one voice channel visible)",
           "`/deepfocus exit` — Leave Deep Focus and get your roles back",
           "`/deepfocus status` — See your time remaining",
         ].join("\n"),

@@ -21,11 +21,6 @@ export const data = new SlashCommandBuilder()
                     .setMinValue(1)
                     .setMaxValue(MAX_DURATION_HOURS)
             )
-            .addBooleanOption(option =>
-                option.setName("show-tag")
-                    .setDescription("Show a 📵 tag in your name while focusing (default: yes)")
-                    .setRequired(false)
-            )
             .addChannelOption(option =>
                 option.setName("channel")
                     .setDescription("Keep this one voice channel visible & joinable (default: your current voice channel, if any)")
@@ -59,11 +54,8 @@ export async function execute(interaction, client) {
     switch (subcommand) {
         case "start": {
             const hours = interaction.options.getInteger("hours") ?? DEFAULT_DURATION_HOURS;
-            // null when omitted → the user's stored preference decides;
-            // explicit true/false also becomes their sticky preference.
-            const showTag = interaction.options.getBoolean("show-tag");
             const channelOption = interaction.options.getChannel("channel");
-            await handleDeepFocusStart(interaction, client, hours, showTag, channelOption?.id ?? null);
+            await handleDeepFocusStart(interaction, client, hours, channelOption?.id ?? null);
             break;
         }
         case "exit":

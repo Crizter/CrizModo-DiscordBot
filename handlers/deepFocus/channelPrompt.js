@@ -49,7 +49,6 @@ async function finishEntry(interaction, client, channelId) {
       member: interaction.member,
       client,
       durationHours: DEFAULT_DURATION_HOURS,
-      showTag: null,
       channelId,
     });
 

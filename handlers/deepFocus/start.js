@@ -40,10 +40,9 @@ function buildChannelExceptionWarning(result) {
 // Entry does several API round-trips (log post + role ops) and will blow the
 // 3s interaction window — defer first, and catch internally: bot.js's generic
 // error path calls bare interaction.reply, which throws after a defer.
-// showTag: true/false = explicit choice; null = user's stored preference.
 // channelId: explicit /deepfocus start channel option; null = fall back to
 // the member's current voice channel (covers button entry too).
-export async function handleDeepFocusStart(interaction, client, durationHours = DEFAULT_DURATION_HOURS, showTag = null, channelId = null) {
+export async function handleDeepFocusStart(interaction, client, durationHours = DEFAULT_DURATION_HOURS, channelId = null) {
   try {
     await interaction.deferReply({ flags: 64 });
 
@@ -51,7 +50,6 @@ export async function handleDeepFocusStart(interaction, client, durationHours = 
       member: interaction.member,
       client,
       durationHours,
-      showTag,
       channelId,
     });
 

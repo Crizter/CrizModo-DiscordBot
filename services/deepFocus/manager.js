@@ -1,6 +1,5 @@
 import { EmbedBuilder, PermissionFlagsBits } from "discord.js";
 import { DeepFocusSession } from "../../models/DeepFocusSession.js";
-import { DeepFocusPreference } from "../../models/DeepFocusPreference.js";
 import {
   DEEP_FOCUS_ENABLED,
   DEEP_FOCUS_ROLE_ID,
@@ -43,13 +42,10 @@ let sweepInterval = null;
 // Rate limiting (in-memory — resets on restart, which is fine for abuse
 // throttling). Enter is gated for 30s after any enter/exit so button spam
 // can't thrash role strips/restores; EXIT IS NEVER GATED — users must never
-// feel trapped in focus mode. The tag toggle gets a light 3s guard.
+// feel trapped in focus mode.
 // const ENTER_COOLDOWN_MS = 30_000;
-// const TOGGLE_COOLDOWN_MS = 3_000;
 const ENTER_COOLDOWN_MS= 0 ;
-const TOGGLE_COOLDOWN_MS = 0 ; 
 const lastStateChange = new Map(); // "guildId:userId" -> timestamp of last enter/exit
-const lastTagToggle = new Map(); // "guildId:userId" -> timestamp of last toggle
 
 function cooldownRemaining(map, key, windowMs) {
   const ts = map.get(key);
@@ -61,9 +57,6 @@ function pruneCooldowns() {
   const now = Date.now();
   for (const [key, ts] of lastStateChange) {
     if (now - ts > ENTER_COOLDOWN_MS) lastStateChange.delete(key);
-  }
-  for (const [key, ts] of lastTagToggle) {
-    if (now - ts > TOGGLE_COOLDOWN_MS) lastTagToggle.delete(key);
   }
 }
 
@@ -210,44 +203,14 @@ export async function getOpenSession(guildId, userId) {
   return await DeepFocusSession.findOne({ guildId, userId, isOpen: true });
 }
 
-export async function getShowTagPreference(guildId, userId) {
-  const pref = await DeepFocusPreference.findOne({ guildId, userId });
-  return pref ? pref.showTag : true; // tag defaults on
-}
-
-export async function setShowTagPreference(guildId, userId, showTag) {
-  await DeepFocusPreference.findOneAndUpdate(
-    { guildId, userId },
-    { $set: { showTag } },
-    { upsert: true }
-  );
-}
-
-// Flips the stored preference (pinned-message toggle button). Rate-limited;
-// affects the NEXT entry — an already-applied nickname is left alone.
-export async function toggleShowTagPreference(guildId, userId) {
-  const key = `${guildId}:${userId}`;
-  const remainingMs = cooldownRemaining(lastTagToggle, key, TOGGLE_COOLDOWN_MS);
-  if (remainingMs > 0) {
-    return { ok: false, remainingMs };
-  }
-  lastTagToggle.set(key, Date.now());
-
-  const current = await getShowTagPreference(guildId, userId);
-  await setShowTagPreference(guildId, userId, !current);
-  return { ok: true, showTag: !current };
-}
-
 // Crash-safe ordering: nothing is mutated until both the log message and the
 // DB doc (with the full savedRoleIds list) exist — so recovery is always
 // possible no matter where a crash lands. See the sweep for the recovery
 // paths ('entering' docs older than 5 min get rolled back/forward).
-// showTag: true/false = explicit choice (persisted as the user's preference);
-// null/undefined = resolve from the stored preference (button entry).
 // channelId: explicit channel picked via the /deepfocus start option; null =
 // fall back to the member's current voice channel, if any (covers button
 // entry, which can't carry command options).
-export async function enterDeepFocus({ member, client, durationHours = DEFAULT_DURATION_HOURS, showTag = null, channelId = null }) {
+export async function enterDeepFocus({ member, client, durationHours = DEFAULT_DURATION_HOURS, channelId = null }) {
   if (!DEEP_FOCUS_ENABLED) {
     return { ok: false, error: "Deep Focus is currently disabled." };
   }
@@ -364,26 +327,13 @@ export async function enterDeepFocus({ member, client, durationHours = DEFAULT_D
     return { ok: false, error: "Couldn't assign the Deep Focus role. Nothing else was changed." };
   }
 
-  // 5b. Optional visible tag: prefix the display name with 📵. Purely
-  // cosmetic — never fails entry. The server owner and members above the bot
-  // can't be renamed (member.manageable false) — skipped silently. Intent is
-  // persisted BEFORE the rename so a crash between the two is covered by
-  // restore's current-nickname === appliedNickname guard.
-  let resolvedShowTag;
-  if (showTag === null || showTag === undefined) {
-    resolvedShowTag = await getShowTagPreference(guild.id, member.id);
-  } else {
-    resolvedShowTag = showTag;
-    // Explicit command choice becomes the sticky preference for button entry.
-    await setShowTagPreference(guild.id, member.id, showTag).catch(() => {});
-  }
-
+  // 5b. Visible tag: always prefix the display name with 📵 — not optional.
+  // Purely cosmetic — never fails entry. The server owner and members above
+  // the bot can't be renamed (member.manageable false) — skipped silently.
+  // Intent is persisted BEFORE the rename so a crash between the two is
+  // covered by restore's current-nickname === appliedNickname guard.
   let tagApplied = false;
-  if (
-    resolvedShowTag &&
-    member.manageable &&
-    botMember.permissions.has(PermissionFlagsBits.ManageNicknames)
-  ) {
+  if (member.manageable && botMember.permissions.has(PermissionFlagsBits.ManageNicknames)) {
     const tagged = `📵 ${member.displayName}`.slice(0, 32);
     session.appliedNickname = tagged;
     await session.save();
