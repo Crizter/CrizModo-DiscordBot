@@ -114,18 +114,18 @@ export const data = new SlashCommandBuilder()
                     .addIntegerOption(option =>
                         option
                             .setName("sessions")
-                            .setDescription("Sessions before long break (1-10)")
+                            .setDescription("Sessions before long break (1-25)")
                             .setRequired(false)
                             .setMinValue(1)
-                            .setMaxValue(10)
+                            .setMaxValue(25)
                     )
                     .addIntegerOption(option =>
                         option
                             .setName("max-sessions")
-                            .setDescription("Maximum total sessions (1-10)")
+                            .setDescription("Maximum total sessions (1-25)")
                             .setRequired(false)
                             .setMinValue(1)
-                            .setMaxValue(10)
+                            .setMaxValue(25)
                     )
             )
             .addSubcommand(subcommand =>
