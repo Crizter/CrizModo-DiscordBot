@@ -76,10 +76,10 @@ import { SUPER_VERIFICATION_APPLY_CHANNEL_ID } from "./config/constants.js";
 export const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildVoiceStates, // Added for voice channel monitoring
-    GatewayIntentBits.GuildMembers, // Added for member access
-    GatewayIntentBits.GuildMessages, // Added for ticket message watching
-    GatewayIntentBits.MessageContent, // Added to read ticket message content
+    GatewayIntentBits.GuildVoiceStates, // voice channel monitoring
+    GatewayIntentBits.GuildMembers, // approved privileged intent
+    GatewayIntentBits.GuildMessages, // message events (no content intent needed for delete/stubs)
+    // MessageContent intentionally omitted — not approved; ticket FAQ stub does not need it
   ],
 });
 
