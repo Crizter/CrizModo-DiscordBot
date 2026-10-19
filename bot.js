@@ -118,28 +118,49 @@ client.commands.set("help", { execute: helpExecute });
 // Initialize REST API
 const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
 
-// Register the slash commands
-async function registerCommands() {
-  try {
-    console.log("🚀 Registering slash commands for guild...");
+// Register slash commands for one guild (instant — unlike global commands).
+async function registerCommandsForGuild(guildId, guildName = guildId) {
+  await rest.put(
+    Routes.applicationGuildCommands(process.env.CLIENT_ID, guildId),
+    { body: commands }
+  );
+  console.log(`✅ Slash commands registered for ${guildName} (${guildId})`);
+}
 
-    await rest.put(
-      Routes.applicationGuildCommands(
-        process.env.CLIENT_ID,
-        process.env.GUILD_ID
-      ),
-      { body: commands }
-    );
+// Register slash commands in every guild the bot is currently in.
+async function registerCommandsForAllGuilds() {
+  const guilds = await client.guilds.fetch();
+  console.log(`🚀 Registering slash commands for ${guilds.size} guild(s)...`);
 
-    console.log("✅ Slash commands registered for guild successfully!");
-  } catch (error) {
-    console.error("❌ Error registering slash commands:", error);
+  let ok = 0;
+  let failed = 0;
+  for (const [guildId, guild] of guilds) {
+    try {
+      // guild from fetch() is a Guild/OAuth2Guild — name may be present
+      await registerCommandsForGuild(guildId, guild.name ?? guildId);
+      ok++;
+    } catch (error) {
+      failed++;
+      console.error(
+        `❌ Failed registering commands for ${guild.name ?? guildId} (${guildId}):`,
+        error.message ?? error
+      );
+    }
   }
+
+  console.log(`✅ Command registration done. ok=${ok} failed=${failed}`);
 }
 
 // When the bot is ready
 client.once(Events.ClientReady, async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
+
+  // Per-guild command registration (must run after login so we know all guilds)
+  try {
+    await registerCommandsForAllGuilds();
+  } catch (error) {
+    console.error("❌ Error registering slash commands:", error);
+  }
 
   // Initialize room active check feature state for all guilds from database
   console.log("🔧 Initializing room active check system from database...");
@@ -318,9 +339,10 @@ client.on(Events.GuildMemberRemove, async (member) => {
   }
 });
 
-// Handle guild join events (set default feature state)
+// Handle guild join events (set default feature state + register slash commands)
 client.on(Events.GuildCreate, async (guild) => {
   try {
+    await registerCommandsForGuild(guild.id, guild.name);
     await initializeGuildFeatureState(guild.id);
     await initializeGuildPulseState(guild.id);
     console.log(
@@ -349,7 +371,6 @@ const uri = process.env.DATABASE_URL;
 // Start the bot
 async function main() {
   try {
-    await registerCommands();
     await connectToCluster(uri);
     console.log("💾 Database connected successfully");
 
